@@ -632,7 +632,7 @@ void MOLECULE::irc_step()
       throw(INTCO_EXCEPT("Could not converge lagrangian for constrained minimization"));
   }
 
-  oprintf_out( "\n    Lagrangian multiplier is converged.\n");
+  oprintf_out( "\n    Lagrangian multiplier is converged. %10.4e\n", lambda);
 
 
 //4. Find dq_m from equation 24 in Gonzalez & Schlegel (1990)
