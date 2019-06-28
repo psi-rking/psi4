@@ -43,6 +43,25 @@ import collections
 from psi4 import core
 from psi4.driver import p4util
 
+# RAK
+def atomic_displacements(mol):
+    step = core.get_global_option('RESPONSE_DISP_SIZE')
+    disps_np = []
+    # explicit np is needed for irreps in psi4 matrix
+    for i in range(mol.natom()):
+        for xyz in range(3):
+            x = mol.geometry().clone().np
+            x[i][xyz] -= step
+            disps_np.append(x)
+            x = mol.geometry().clone().np
+            x[i][xyz] += step
+            disps_np.append(x)
+
+    # need to get into psi4.core.Matrix form for set_geometry() function
+    disps = []
+    for d in disps_np:
+        disps.append(core.Matrix.from_array(d))
+    return disps
 
 def generate_inputs(db,name):
     """
@@ -60,7 +79,7 @@ def generate_inputs(db,name):
     natom = molecule.natom()
 
     # get list of displacements
-    displacement_geoms = core.atomic_displacements(molecule)
+    displacement_geoms = atomic_displacements(molecule)
 
     # Sanity Check
     # there should be 3 cords * natoms *2 directions (+/-)
@@ -106,10 +125,10 @@ def initialize_database(database, name, prop, properties_array, additional_kwarg
     prop: (string) the property being computed, used to add xxx_computed flag
         to database
     prop_array: (list of strings) properties to go in
-        properties kwarg of the property() cmd in each sub-dir
+        properties kwarg of the properties() cmd in each sub-dir
     additional_kwargs: (list of strings) *optional*
         any additional kwargs that should go in the call to the
-        property() driver method in each subdir
+        properties() driver method in each subdir
 
 
     Returns: nothing
@@ -117,7 +136,7 @@ def initialize_database(database, name, prop, properties_array, additional_kwarg
     """
     database['inputs_generated'] = False
     database['jobs_complete'] = False
-    prop_cmd ="property('{0}',".format(name)
+    prop_cmd ="properties('{0}',".format(name)
     prop_cmd += "properties=[ '{}' ".format(properties_array[0])
     if len(properties_array) > 1:
         for element in properties_array[1:]:
@@ -163,8 +182,7 @@ def stat(db):
             n_finished += 1
         elif status in ('not_started', 'running'):
             try:
-                with open("{}/output.dat".format(job)) as outfile:
-                    outfile.seek(-150, 2)
+                with open("{0}/output.dat".format(job),'r') as outfile:
                     for line in outfile:
                         if 'Psi4 exiting successfully' in line:
                             db['job_status'][job] = 'finished'

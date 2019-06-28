@@ -116,7 +116,8 @@ def run_roa(name, **kwargs):
         # Compute Scattering
         # Run new function (src/bin/ccresponse/scatter.cc)
         core.print_out('Running scatter function')
-        step = core.get_local_option('FINDIF', 'DISP_SIZE')
+        #step = core.get_local_option('FINDIF', 'DISP_SIZE')
+        step = core.get_global_option('RESPONSE_DISP_SIZE')
         for g_idx, gauge in enumerate(opt_rot_list):
             print('\n\n----------------------------------------------------------------------')
             print('\t%%%%%%%%%% {} %%%%%%%%%%'.format(gauge_list[g_idx]))
