@@ -2943,7 +2943,7 @@ def run_cc_property(name, **kwargs):
     if (name in ['eom-ccsd', 'eom-cc2']) and n_response > 0:
         raise ValidationError("""Cannot (yet) compute response properties for excited states.""")
 
-    if 'roa' in response:
+    if 'ROA' in response:
         # Perform distributed roa job
         run_roa(name, **kwargs)
         return  # Don't do anything further

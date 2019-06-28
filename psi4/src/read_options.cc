@@ -144,6 +144,8 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
     /*- Either :ref:`a set of 3 coordinates or a string <table:oe_origin>`
     describing the origin about which one-electron properties are computed. -*/
     options.add("PROPERTIES_ORIGIN", new ArrayType());
+    /*- Displacement size for distributed computations of ROA tensors. -*/
+    options.add_double("RESPONSE_DISP_SIZE", 0.001);
 
     /*- Psi4 dies if energy does not converge. !expert -*/
     options.add_bool("DIE_IF_NOT_CONVERGED", true);
