@@ -30,7 +30,7 @@ import shelve
 from psi4 import core
 from psi4.driver.p4util import *
 from . import findif_response_utils
-
+import roa
 
 def run_roa(name, **kwargs):
     """
@@ -43,22 +43,32 @@ def run_roa(name, **kwargs):
             2. Generates separate input files for displaced geometries.
             3. When all displacements are run, collects the necessary information
                 from each displaced computation, and computes final result.
+
+        Rewritten in 2019 to
+         1. compute normal vibrational modes first and do 2*(3N-5/6) displacements
+            (not 2*3N as before, but still ignoring molecule symmetry).
+         2. analyze results with new python function
+            (ccresponse/scatter.cc becomes obsolete)
+         3. support computing Raman activity only of specified modes.
     """
 
     # Get list of omega values -> Make sure we only have one wavelength
     # Catch this now before any real work gets done
-    omega = core.get_option('CCRESPONSE', 'OMEGA')
-    if len(omega) > 2:
+    print_lvl = core.get_global_option('PRINT')
+    cnt = len(core.get_option('CCRESPONSE', 'OMEGA'))
+    if cnt > 2:
         raise Exception('ROA scattering can only be performed for one wavelength.')
-    else:
-        pass
+    elif cnt == 0:
+        omega = 0.0
+    elif cnt == 1:
+        omega = roa.omega_in_au(core.get_option('CCRESPONSE', 'OMEGA'),'au')
+    elif cnt == 2:
+        omega = roa.omega_in_au(core.get_option('CCRESPONSE', 'OMEGA')[0],core.get_option('CCRESPONSE', 'OMEGA')[1])
 
-    core.print_out(
-        'Running ROA computation. Subdirectories for each '
-        'required displaced geometry have been created.\n\n')
+    core.print_out( 'Running ROA computation. Subdirectories for each '
+        'required displaced geometry are used.\n\n')
 
     dbno = 0
-    # Initialize database
     db = shelve.open('database', writeback=True)
     # Check if final result is in here
     # ->if we have already computed roa, back up the dict
@@ -74,13 +84,43 @@ def run_roa(name, **kwargs):
     else:
         db['roa_computed'] = False
 
-    if 'inputs_generated' not in db:
-        findif_response_utils.initialize_database(db,name,"roa", ["roa_tensor"])
+    print("roa_vib_modes length is %d" % len(core.get_option('CCRESPONSE', 'ROA_VIB_MODES')))
 
-    # Generate input files
-    if not db['inputs_generated']:
-        findif_response_utils.generate_inputs(db,name)
-        # handled by helper db['inputs_generated'] = True
+    use_atomic_cartesian_displacements = True
+    if len(core.get_option('CCRESPONSE', 'ROA_VIB_MODES')):
+        roa_vib_modes = core.get_option('CCRESPONSE', 'ROA_VIB_MODES')
+        print('Doing displacements for normal modes:', roa_vib_modes)
+        roa_vib_modes = [ m-1 for m in roa_vib_modes]  # internally -1
+        use_atomic_cartesian_displacements = False
+    else:
+        print('Doing displacements for all atomic Cartesians')
+
+    mol    = core.get_active_molecule()
+    Natom  = mol.natom()
+    geom   = mol.geometry().clone().np
+    masses = np.array( [mol.mass(i) for i in range(Natom)] )
+    hessian = roa.psi4_read_hessian(Natom)
+
+    if use_atomic_cartesian_displacements:
+        displacement_vectors = np.identity(3*Natom)
+    else:
+        # Do normal mode analysis and return the normal mode vectors (non-MW?) for
+        # indices numbering from 0 (highest nu) downward.  vectors are columns
+        (displacement_vectors, selected_freqs) = roa.modeVectors(geom,
+          masses, hessian, roa_vib_modes, 2, core.print_out)
+
+    # only needs to know how to label the displacements, e.g., 1_x_m or 5_p
+    if 'inputs_generated' not in db:
+        if use_atomic_cartesian_displacements:
+            findif_response_utils.initialize_database(db,name,"roa", ["roa_tensor"])
+        else:
+            findif_response_utils.initialize_database(db,name,"roa", ["roa_tensor"],
+              mode_indices=roa_vib_modes)
+
+    # displaces + and - along provided vectors
+    stepsize = core.get_global_option('RESPONSE_DISP_SIZE')
+    vs_as_rows = displacement_vectors.T
+    findif_response_utils.generate_inputs(db, name, vs_as_rows, stepsize)
 
     # Check job status
     if db['inputs_generated'] and not db['jobs_complete']:
@@ -90,66 +130,74 @@ def run_roa(name, **kwargs):
             print("{} --> {}".format(job, status))
 
     # Compute ROA Scattering
-    if db['jobs_complete']:
+    if db['jobs_complete']: # code does not and has not worked for multiple gauges
+        # Gather data from displaced geometries
+        fd_pol = findif_response_utils.collect_displaced_matrix_data(db,'Dipole Polarizability',3)
+        fd_pol = np.array( fd_pol )
+        if print_lvl > 2:
+            core.print_out("Electric-Dipole/Dipole Polarizabilities")
+            core.print_out(str(fd_pol))
+        # custom function to read without db
+        # fd_pol  = roa.psi4_read_polarizabilities(Natom, omega)
+
+        fd_quad_list = findif_response_utils.collect_displaced_matrix_data(
+            db, "Electric-Dipole/Quadrupole Polarizability", 9)
+        fd_quad = []
+        for row in fd_quad_list:
+            fd_quad.append( np.array(row).reshape(9,3))
+        if print_lvl > 2:
+            core.print_out("Electric-Dipole/Quadrupole Polarizabilities")
+            core.print_out(str(fd_quad)+'\n')
+        # custom function to read without db
+        # fd_quad = roa.psi4_read_dipole_quadrupole_polarizability(Natom, omega)
+
         mygauge = core.get_option('CCRESPONSE', 'GAUGE')
         consider_gauge = {
             'LENGTH': ['Length Gauge'],
             'VELOCITY': ['Modified Velocity Gauge'],
             'BOTH': ['Length Gauge', 'Modified Velocity Gauge']
         }
-        gauge_list = ["{} Results".format(x) for x in consider_gauge[mygauge]]
-        # Gather data
-        dip_polar_list = findif_response_utils.collect_displaced_matrix_data(
-            db, 'Dipole Polarizability', 3)
-        opt_rot_list = [
-            x for x in (
-                findif_response_utils.collect_displaced_matrix_data(
-                    db,
-                    "Optical Rotation Tensor ({})".format(gauge),
-                    3
-                )
-                for gauge in consider_gauge[mygauge]
-            )
-        ]
-        dip_quad_polar_list = findif_response_utils.collect_displaced_matrix_data(
-            db, "Electric-Dipole/Quadrupole Polarizability", 9)
-        # Compute Scattering
-        # Run new function (src/bin/ccresponse/scatter.cc)
-        core.print_out('Running scatter function')
-        #step = core.get_local_option('FINDIF', 'DISP_SIZE')
-        step = core.get_global_option('RESPONSE_DISP_SIZE')
-        for g_idx, gauge in enumerate(opt_rot_list):
-            print('\n\n----------------------------------------------------------------------')
-            print('\t%%%%%%%%%% {} %%%%%%%%%%'.format(gauge_list[g_idx]))
-            print('----------------------------------------------------------------------\n\n')
+
+        # required for IR intensities; could be omitted if absent
+        dipder  = roa.psi4_read_dipole_derivatives(Natom)
+        if print_lvl > 2:
+            core.print_out("Dipole Moment Derivatives")
+            core.print_out(str(dipder)+'\n')
+
+        for g in consider_gauge[mygauge]:
+            core.print_out('Doing analysis (scatter function) for %s' % g)
+            fd_rot = findif_response_utils.collect_displaced_matrix_data(db,
+                    "Optical Rotation Tensor ({})".format(g), 3) # TODO check omega?
+            fd_rot = np.array( fd_rot )
+            if print_lvl > 2:
+                core.print_out("Optical Rotation Tensor")
+                core.print_out(str(fd_rot)+'\n')
+            # custom function to read without db
+            # fd_rot  = roa.psi4_read_optical_rotation_tensor(Natom, omega)
             core.print_out('\n\n----------------------------------------------------------------------\n')
-            core.print_out('\t%%%%%%%%%% {} %%%%%%%%%%\n'.format(gauge_list[g_idx]))
+            core.print_out('\t%%%%%%%%%% {} Results %%%%%%%%%%\n'.format(g))
             core.print_out('----------------------------------------------------------------------\n\n')
-            print('roa.py:85 I am not being passed a molecule, grabbing from global :(')
-            core.scatter(core.get_active_molecule(), step, dip_polar_list, gauge, dip_quad_polar_list)
+
+            bas = core.get_global_option('BASIS')
+            NBF = core.BasisSet.build(mol, 'BASIS', bas).nbf()
+            lbl = (name + '/' + bas).upper()
+
+            if use_atomic_cartesian_displacements:
+                roa.scatter(geom, masses, hessian, dipder, omega, stepsize,
+                  fd_pol, fd_rot, fd_quad, print_lvl=2, pr=core.print_out, calc_type=lbl, nbf=NBF)
+            else:
+                roa.modeScatter(roa_vib_modes, displacement_vectors, selected_freqs,
+                    geom, masses, dipder, omega, stepsize, fd_pol, fd_rot, fd_quad,
+                    print_lvl=2, pr=core.print_out, calc_type=lbl, nbf=NBF)
+
+            #print('roa.py:85 I am not being passed a molecule, grabbing from global :(')
+            #core.scatter(core.get_active_molecule(), stepsize, dip_polar_list,
+            # gauge, dip_quad_polar_list)
 
         db['roa_computed'] = True
 
     db.close()
 
-#   SAVE this for when multiple wavelengths works
-# # Get list of omega values
-# omega = core.get_option('CCRESPONSE','OMEGA')
-# if len(omega) > 1:
-#     units = copy.copy(omega[-1])
-#     omega.pop()
-# else:
-#     units = 'atomic'
-# wavelength = copy.copy(omega[0])
-# # Set up units for scatter.cc
-# if units == 'NM':
-#     wavelength = (constants.c * constants.h * 1*(10**-9))/(wavelength * constants.hartree2J)
-# if units == 'HZ':
-#     wavelength = wavelength * constants.h / constants.hartree2J
-# if units == 'EV':
-#     wavelength = wavelength / constants.hartree2ev
-# if units == 'atomic':
-#     pass
 # ################################
 # ###                          ###
 # ###    DATABASE STRUCTURE    ###
