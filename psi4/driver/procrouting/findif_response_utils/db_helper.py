@@ -39,23 +39,28 @@ from __future__ import absolute_import
 from __future__ import print_function
 import os
 import collections
+import numpy as np
 
 from psi4 import core
 from psi4.driver import p4util
 
-# RAK
-def atomic_displacements(mol):
-    step = core.get_global_option('RESPONSE_DISP_SIZE')
+# RAK modeVectors are assumed 1D and normalized
+def geom_displacements(mol, modeVectors, step):
+    Natom = mol.natom()
+    for v in modeVectors:
+        if len(v) != 3*Natom:
+            raise Exception('Mode displacement vector is wrong length.')
+
     disps_np = []
-    # explicit np is needed for irreps in psi4 matrix
-    for i in range(mol.natom()):
-        for xyz in range(3):
-            x = mol.geometry().clone().np
-            x[i][xyz] -= step
-            disps_np.append(x)
-            x = mol.geometry().clone().np
-            x[i][xyz] += step
-            disps_np.append(x)
+    for v in modeVectors:
+        dispM = mol.geometry().clone().np
+        dispP = mol.geometry().clone().np
+        for atom in range(Natom):
+           for xyz in range(3):
+            dispM[atom][xyz] -= step * v[3*atom+xyz]
+            dispP[atom][xyz] += step * v[3*atom+xyz]
+        disps_np.append(dispM)
+        disps_np.append(dispP)
 
     # need to get into psi4.core.Matrix form for set_geometry() function
     disps = []
@@ -63,10 +68,12 @@ def atomic_displacements(mol):
         disps.append(core.Matrix.from_array(d))
     return disps
 
-def generate_inputs(db,name):
+def generate_inputs(db,name,disp_vectors,stepsize):
     """
         Generates the input files in each sub-directory of the
         distributed finite differences property calculation.
+        The default is to generate Cartesian atomics +/-, but alteratively
+        user can pass in the desired displacement_geoms
 
     name: ( string ) method name passed to calling driver,
     db:   (database) The database object associated with this property
@@ -78,16 +85,14 @@ def generate_inputs(db,name):
     molecule = core.get_active_molecule()
     natom = molecule.natom()
 
-    # get list of displacements
-    displacement_geoms = atomic_displacements(molecule)
-
-    # Sanity Check
-    # there should be 3 cords * natoms *2 directions (+/-)
-    if not (6 * natom) == len(displacement_geoms):
-        raise Exception('The number of atomic displacements should be 6 times'
-                        ' the number of atoms!')
+    print("Number of displacement vectors: %d" % len(disp_vectors))
+    displacement_geoms = geom_displacements(molecule, disp_vectors, stepsize)
+    print("Number of displaced geoms: %d" % len(displacement_geoms))
+    if 2*len(disp_vectors) != len(displacement_geoms):
+        raise Exception('The number of displacement vectors and geometries is inconsistent.')
 
     displacement_names = db['job_status'].keys()
+    #print( str(displacement_names) )
 
     for n, entry in enumerate(displacement_names):
         if not os.path.exists(entry):
@@ -115,7 +120,8 @@ def generate_inputs(db,name):
     # END generate_inputs
 
 
-def initialize_database(database, name, prop, properties_array, additional_kwargs=None):
+def initialize_database(database, name, prop, properties_array,
+      additional_kwargs=None, mode_indices=None):
     """
         Initialize the database for computation of some property
         using distributed finite differences driver
@@ -129,13 +135,17 @@ def initialize_database(database, name, prop, properties_array, additional_kwarg
     additional_kwargs: (list of strings) *optional*
         any additional kwargs that should go in the call to the
         properties() driver method in each subdir
-
+    modeIndices: (list of ints) *optional* If provided, serves as
+        labels for displacements and indicates their number.  If absent,
+        labels are atom indices and 3N displacements are expected.
 
     Returns: nothing
     Throws: nothing
     """
     database['inputs_generated'] = False
     database['jobs_complete'] = False
+
+    # Construct the property input line a displacement
     prop_cmd ="properties('{0}',".format(name)
     prop_cmd += "properties=[ '{}' ".format(properties_array[0])
     if len(properties_array) > 1:
@@ -147,19 +157,32 @@ def initialize_database(database, name, prop, properties_array, additional_kwarg
             prop_cmd += ", {}".format(arg)
     prop_cmd += ")"
     database['prop_cmd'] = prop_cmd
+
     database['job_status'] = collections.OrderedDict()
     # Populate the job_status dict
     molecule = core.get_active_molecule()
     natom = molecule.natom()
-    coordinates = ['x', 'y', 'z']
-    #step_direction = ['p', 'm'] changing due to change in findif atomic_displacements
-    step_direction = ['m', 'p']
+    xyz_coordinates = ['x', 'y', 'z']
 
-    for atom in range(1, natom + 1):
-        for coord in coordinates:
-            for step in step_direction:
-                job_name = '{}_{}_{}'.format(atom, coord, step)
-                database['job_status'].update({job_name: 'not_started'})
+    # Determine type of diplacements
+    if mode_indices is not None:
+        coordinate_lbls = [m+1 for m in mode_indices]  # will be directory name so +1
+    else:
+        coordinate_lbls = []
+        # Number in lbl will refer to atom
+        for atom in range(1, natom + 1):
+            for xyz in xyz_coordinates:
+                coordinate_lbls.append('{}_{}'.format(atom, xyz))
+    print("Displacement labels to be used:")
+    for l in coordinate_lbls:
+        print(l)
+
+    step_direction = ['m', 'p']
+    for l in coordinate_lbls:
+        for step in step_direction:
+            job_name = '{}_{}'.format(l, step)
+            database['job_status'].update({job_name: 'not_started'})
+
     database['{}_computed'.format(prop)] = False
 
     # END initialize_database()

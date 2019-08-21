@@ -1987,6 +1987,11 @@ int read_options(const std::string &name, Options &options, bool suppress_printi
         than one element is given, then the units must be specified as the final
         element of the array.  Acceptable units are ``HZ``, ``NM``, ``EV``, and ``AU``. -*/
         options.add("OMEGA", new ArrayType());
+        /*- Array specifying the indices of the normal modes for which ROA
+        analysis will be done.  If provided, displacement for finite differences
+        of tensors will be done along normal modes.  If omitted, Cartesian displacements
+        for all atoms will be done -*/
+        options.add("ROA_VIB_MODES", new ArrayType());
     }
     //  if(name == "RESPONSE"|| options.read_globals()){
     //     /*- MODULEDESCRIPTION Performs SCF linear response computations. -*/
