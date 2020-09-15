@@ -181,14 +181,19 @@ def run_roa(name, **kwargs):
             bas = core.get_global_option('BASIS')
             NBF = core.BasisSet.build(mol, 'BASIS', bas).nbf()
             lbl = (name + '/' + bas).upper()
+            sp_outfile = core.get_output_file()
+            if sp_outfile[-4:] == '.out':
+                sp_outfile = sp_outfile[:-4]
+            sp_outfile = sp_outfile + '.sp.out'
 
             if use_atomic_cartesian_displacements:
                 roa.scatter(geom, masses, hessian, dipder, omega, stepsize,
-                  fd_pol, fd_rot, fd_quad, print_lvl=2, pr=core.print_out, calc_type=lbl, nbf=NBF)
+                  fd_pol, fd_rot, fd_quad, print_lvl=2, ROAdictName=sp_outfile, pr=core.print_out,
+                  calc_type=lbl, nbf=NBF)
             else:
                 roa.modeScatter(roa_vib_modes, displacement_vectors, selected_freqs,
                     geom, masses, dipder, omega, stepsize, fd_pol, fd_rot, fd_quad,
-                    print_lvl=2, pr=core.print_out, calc_type=lbl, nbf=NBF)
+                    print_lvl=2, ROAdictName=sp_outfile, pr=core.print_out, calc_type=lbl, nbf=NBF)
 
             #print('roa.py:85 I am not being passed a molecule, grabbing from global :(')
             #core.scatter(core.get_active_molecule(), stepsize, dip_polar_list,
