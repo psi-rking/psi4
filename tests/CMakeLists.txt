@@ -56,7 +56,7 @@ foreach(test_name adc1 adc2 casscf-fzc-sp casscf-semi casscf-sa-sp ao-casscf-sp 
                   dft-grad-lr1 dft-grad-lr2 dft-grad-lr3 dft-grad-disk
                   dfomp2p5-grad2 dfrasscf-sp dfscf-bz2 dft-b2plyp dft-grac dft-ghost dft-grad-meta
                   dft-freq dft-freq-analytic dft-grad1 dft-grad2 dft-psivar dft-b3lyp dft1 dft-vv10
-                  dft1-alt dft2 dft3 dft-omega dft-dens-cut docs-bases docs-dft explicit-am-basis extern1 extern2
+                  dft1-alt dft2 dft3 dft-omega dft-dens-cut docs-bases docs-dft explicit-am-basis extern1 extern2 extern3
                   fsapt1 fsapt2 fsapt-terms fsapt-allterms fsapt-ext isapt1 isapt2
                   fci-dipole fci-h2o fci-h2o-2 fci-h2o-fzcv fci-tdm fci-tdm-2
                   fci-coverage
@@ -64,9 +64,9 @@ foreach(test_name adc1 adc2 casscf-fzc-sp casscf-semi casscf-sa-sp ao-casscf-sp 
                   fd-freq-energy fd-freq-energy-large fd-freq-gradient
                   fd-freq-gradient-large fd-gradient freq-isotope1 freq-isotope2 fnocc1 fnocc2
                   fnocc3 fnocc4 fnocc5 frac frac-ip-fitting frac-traverse ghosts gibbs
-                  lccd-grad1 lccd-grad2 matrix1 mcscf1 mcscf2 mcscf3
+                  lccd-grad1 lccd-grad2 matrix1 mbis-1 mbis-2 mbis-3 mbis-4 mbis-5 mcscf1 mcscf2 mcscf3
                   mints1 mints2 mints3 mints4 mints5 mints6 mints8 mints-benchmark mints-helper
-                  mints9 mints10 molden1 molden2 mom mp2-1  mp2-def2 mp2-grad1 mp2-grad2 mp2-h
+                  mints9 mints10 mints15 molden1 molden2 mom mp2-1  mp2-def2 mp2-grad1 mp2-grad2 mp2-h
                   mp2p5-grad1 mp2p5-grad2 mp3-grad1 mp3-grad2
                   mp2-property mpn-bh nbody-he-cluster nbody-intermediates nbody-nocp-gradient
                   nbo nbody-cp-gradient nbody-vmfc-gradient nbody-convergence
@@ -91,17 +91,13 @@ foreach(test_name adc1 adc2 casscf-fzc-sp casscf-semi casscf-sa-sp ao-casscf-sp 
                   sapt7 sapt8 scf-bz2 scf-dipder scf-ecp scf-guess scf-guess-read1 scf-upcast-custom-basis
                   scf-guess-read2 scf-guess-read3 scf-bs scf1 scf-occ scf2 scf3 scf4 scf5 scf6 scf7 scf-property serial-wfn soscf-large soscf-ref
                   soscf-dft stability1 dfep2-1 dfep2-2 sapt-dft1 sapt-dft2 sapt-compare sapt-sf1 dft-custom dft-reference
-                  stability2 tu1-h2o-energy tu2-ch2-energy tu3-h2o-opt scf-response1 scf-cholesky-basis scf-auto-cholesky
+                  stability2 tu1-h2o-energy tu2-ch2-energy tu3-h2o-opt scf-response1 scf-response2 scf-cholesky-basis scf-auto-cholesky
                   tu4-h2o-freq tu5-sapt tu6-cp-ne2 x2c1 x2c2 x2c3 x2c-perturb-h zaptn-nh2
                   options1 cubeprop-esp dft-smoke scf-hess1 scf-hess2 scf-hess3 scf-hess4 scf-hess5 scf-freq1 dft-jk scf-coverage
                   dft-custom-dhdf dft-custom-hybrid dft-custom-mgga dft-custom-gga
                   pywrap-bfs pywrap-align pywrap-align-chiral mints12 cc-module
                   tdscf-1 tdscf-2 tdscf-3 tdscf-4
-                  basis-ecp dft-pruning weird-basis-01 weird-basis-02
-                  weird-basis-03 weird-basis-04 weird-basis-05
-                  weird-basis-06 weird-basis-07 weird-basis-08
-                  weird-basis-09 weird-basis-10 weird-basis-11
-                  weird-basis-12 freq-masses sapt9 sapt10
+                  basis-ecp dft-pruning freq-masses sapt9 sapt10
 )
     # Some tests fail in python 3
     if("${PYTHON_VERSION_MAJOR}" VERSION_EQUAL "3")

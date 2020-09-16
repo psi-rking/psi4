@@ -447,7 +447,7 @@ def set_options(options_dict, verbose=1):
         option = mobj.group('option').upper()
 
         if module:
-            if (module, option, v) not in [('SCF', 'GUESS', 'READ')]:
+            if ((module, option, v) not in [('SCF', 'GUESS', 'READ')]) and ((module, option) not in [('PCM', 'INPUT')]):
                 # TODO guess/read exception is for distributed driver. should be handled differently.
                 try:
                     core.set_local_option(module, option, v)
@@ -455,6 +455,10 @@ def set_options(options_dict, verbose=1):
                     rejected[k] = (v, err)
                 if verbose > 1:
                     print('Setting: core.set_local_option', module, option, v)
+
+            if (module, option) == ("PCM", "INPUT"):
+                pcm_helper(v)
+
         else:
             try:
                 core.set_global_option(option, v)
@@ -657,7 +661,19 @@ def _qcvar_reshape_get(key, val):
     """For QCVariables where the 2D psi4.core.Matrix shape is unnatural, convert to natural shape in ndarray."""
 
     reshaper = None
-    if key.upper().endswith("DIPOLE"):
+    if key.upper() == "MBIS CHARGES":
+        return val.np
+    elif key.upper() == "MBIS DIPOLES":
+        reshaper = (-1, 3)
+    elif key.upper() == "MBIS QUADRUPOLES":
+        val = val.np.reshape(-1, 6)
+        val = np.array([_multipole_plumper(val[iat], 2) for iat in range(len(val))])
+        return val
+    elif key.upper() == "MBIS OCTUPOLES":
+        val = val.np.reshape(-1, 10)
+        val = np.array([_multipole_plumper(val[iat], 3) for iat in range(len(val))])
+        return val
+    elif key.upper().endswith("DIPOLE"):
         reshaper = (3, )
     elif any(key.upper().endswith(p) for p in _multipole_order):
         return _multipole_plumper(val.np.reshape((-1, )), _multipole_order.index(key.upper().split()[-1]))
@@ -668,7 +684,6 @@ def _qcvar_reshape_get(key, val):
         return val.np.reshape(reshaper)
     else:
         return val
-
 
 def _multipole_compressor(complete, order):
     """Form flat unique components multipole array from complete Cartesian array.
