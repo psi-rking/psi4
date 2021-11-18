@@ -1228,9 +1228,32 @@ def scf_wavefunction_factory(name, ref_wfn, reference, **kwargs):
             wfn.set_sad_fitting_basissets(sad_fitting_list)
             optstash.restore()
 
-    # Deal with the EXTERN issues
+    if hasattr(core, "EXTERN") and 'external_potentials' in kwargs: 
+        core.print_out("\n  Warning! Both an external potential EXTERN object and the external_potential" +
+                       " keyword argument are specified. The external_potentials keyword argument will be ignored.\n")
+
+    # If EXTERN is set, then place that potential on the wfn
     if hasattr(core, "EXTERN"):
+        wfn.set_potential_variable("C", core.EXTERN) # This is for the FSAPT procedure
         wfn.set_external_potential(core.EXTERN)
+
+    elif 'external_potentials' in kwargs:
+        # For FSAPT, we can take a dictionary of external potentials, e.g.,
+        # external_potentials={'A': potA, 'B': potB, 'C': potC} (any optional)
+        # For the dimer SAPT calculation, we need to account for the external potential
+        # in all of the subsystems A, B, C. So we add them all in total_external_potential
+        # and set the external potential to the dimer wave function
+        total_external_potential = core.ExternalPotential()
+
+        for frag in kwargs['external_potentials']:
+            if frag.upper() in "ABC":
+                wfn.set_potential_variable(frag.upper(), kwargs['external_potentials'][frag].extern)
+                total_external_potential.appendCharges(kwargs['external_potentials'][frag].extern.getCharges())
+
+            else:
+                core.print_out("\n  Warning! Unknown key for the external_potentials argument: %s" %frag)
+
+        wfn.set_external_potential(total_external_potential)
 
     return wfn
 
@@ -1567,6 +1590,7 @@ def scf_helper(name, post_scf=True, **kwargs):
 
     e_scf = scf_wfn.compute_energy()
     for obj in [core, scf_wfn]:
+        # set_variable("SCF TOTAL ENERGY")  # P::e SCF
         for pv in ["SCF TOTAL ENERGY", "CURRENT ENERGY", "CURRENT REFERENCE ENERGY"]:
             obj.set_variable(pv, e_scf)
 
@@ -1592,7 +1616,7 @@ def scf_helper(name, post_scf=True, **kwargs):
                 # component qcvars can be retired at v1.5
                 for xyz in 'XYZ':
                     obj.set_variable('CURRENT DIPOLE ' + xyz, obj.variable('SCF DIPOLE ' + xyz))
-            obj.set_variable('CURRENT DIPOLE', obj.variable("SCF DIPOLE"))
+            obj.set_variable("CURRENT DIPOLE", obj.variable("SCF DIPOLE"))  # P::e SCF
 
     # Write out MO's
     if core.get_option("SCF", "PRINT_MOS"):
@@ -2352,10 +2376,10 @@ def run_scf(name, **kwargs):
             if var.startswith('MP2 ') and ssuper.name() not in ['MP2D']:
                 scf_wfn.del_variable(var)
 
-        scf_wfn.set_variable('DOUBLE-HYBRID CORRECTION ENERGY', vdh)
-        scf_wfn.set_variable('{} DOUBLE-HYBRID CORRECTION ENERGY'.format(ssuper.name()), vdh)
+        scf_wfn.set_variable("DOUBLE-HYBRID CORRECTION ENERGY", vdh)  # P::e SCF
+        scf_wfn.set_variable("{} DOUBLE-HYBRID CORRECTION ENERGY".format(ssuper.name()), vdh)
         returnvalue += vdh
-        scf_wfn.set_variable('DFT TOTAL ENERGY', returnvalue)
+        scf_wfn.set_variable("DFT TOTAL ENERGY", returnvalue)  # P::e SCF
         for pv, pvv in scf_wfn.variables().items():
             if pv.endswith('DISPERSION CORRECTION ENERGY') and pv.startswith(ssuper.name()):
                 fctl_plus_disp_name = pv.split()[0]
@@ -2469,11 +2493,11 @@ def run_scf_gradient(name, **kwargs):
 
     ref_wfn.set_gradient(grad)
 
-    ref_wfn.set_variable("SCF TOTAL GRADIENT", grad)
+    ref_wfn.set_variable("SCF TOTAL GRADIENT", grad)  # P::e SCF
     if ref_wfn.functional().needs_xc():
-        ref_wfn.set_variable("DFT TOTAL GRADIENT", grad)  # overwritten later for DH -- TODO when DH gradients
+        ref_wfn.set_variable("DFT TOTAL GRADIENT", grad)  # overwritten later for DH -- TODO when DH gradients  # P::e SCF
     else:
-        ref_wfn.set_variable("HF TOTAL GRADIENT", grad)
+        ref_wfn.set_variable("HF TOTAL GRADIENT", grad)  # P::e SCF
 
     # Shove variables into global space
     for k, v in ref_wfn.variables().items():
@@ -2508,7 +2532,7 @@ def run_scf_hessian(name, **kwargs):
     ref_wfn.set_hessian(H)
 
     # Clearly, add some logic when the reach of this fn expands
-    ref_wfn.set_variable('HF TOTAL HESSIAN', H)
+    ref_wfn.set_variable("HF TOTAL HESSIAN", H)  # P::e SCF
 
     optstash.restore()
     return ref_wfn
@@ -2570,7 +2594,7 @@ def run_dfmp2_gradient(name, **kwargs):
     dfmp2_wfn.set_gradient(grad)
 
     # Shove variables into global space
-    dfmp2_wfn.set_variable('MP2 TOTAL GRADIENT', grad)
+    dfmp2_wfn.set_variable("MP2 TOTAL GRADIENT", grad)  # P::e DFMP2
     dfmp2_wfn.set_variable('CURRENT ENERGY', dfmp2_wfn.variable('MP2 TOTAL ENERGY'))
     dfmp2_wfn.set_variable('CURRENT CORRELATION ENERGY', dfmp2_wfn.variable('MP2 CORRELATION ENERGY'))
     for k, v in dfmp2_wfn.variables().items():
@@ -2585,10 +2609,12 @@ def run_dfmp2d_gradient(name, **kwargs):
     """Encode MP2-D method."""
 
     dfmp2_wfn = run_dfmp2_gradient('mp2', **kwargs)
+    wfn_grad = dfmp2_wfn.gradient().clone()
 
     _, _disp_functor = build_disp_functor('MP2D', restricted=True)
     disp_grad = _disp_functor.compute_gradient(dfmp2_wfn.molecule(), dfmp2_wfn)
-    dfmp2_wfn.gradient().add(disp_grad)
+    wfn_grad.add(disp_grad)
+    dfmp2_wfn.set_gradient(wfn_grad)
 
     dfmp2_wfn.set_variable('MP2D CORRELATION ENERGY', dfmp2_wfn.variable('MP2 CORRELATION ENERGY') + dfmp2_wfn.variable('DISPERSION CORRECTION ENERGY'))
     dfmp2_wfn.set_variable('MP2D TOTAL ENERGY', dfmp2_wfn.variable('MP2D CORRELATION ENERGY') + dfmp2_wfn.variable('HF TOTAL ENERGY'))
@@ -2928,7 +2954,7 @@ def run_scf_property(name, **kwargs):
         warnings.simplefilter("ignore")
         for cart in ["X", "Y", "Z"]:
             core.set_variable("SCF DIPOLE " + cart, core.variable(name + " DIPOLE " + cart))
-    core.set_variable("SCF DIPOLE", core.variable(name + " DIPOLE"))
+    core.set_variable("SCF DIPOLE", core.variable(name + " DIPOLE"))  # P::e SCF
 
     # Run Linear Respsonse
     if len(linear_response):
@@ -3095,8 +3121,10 @@ def run_cc_property(name, **kwargs):
                     core.set_variable("CC ROOT 0 QUADRUPOLE ZZ", core.variable("CC QUADRUPOLE ZZ"))
             if 'dipole' in one:
                 core.set_variable("CC ROOT 0 DIPOLE", core.variable("CC DIPOLE"))
+                # core.set_variable("CC ROOT n DIPOLE", core.variable("CC DIPOLE"))  # P::e CCENERGY
             if 'quadrupole' in one:
                 core.set_variable("CC ROOT 0 QUADRUPOLE", core.variable("CC QUADRUPOLE"))
+                # core.set_variable("CC ROOT n QUADRUPOLE", core.variable("CC QUADRUPOLE"))  # P::e CCENERGY
 
             n_root = sum(core.get_global_option("ROOTS_PER_IRREP"))
             for rn in range(n_root):
@@ -3551,17 +3579,17 @@ def run_adcc(name, **kwargs):
                 continue
             energy = mp.energy_correction(level)
             mp_corr += energy
-            adc_wfn.set_variable(f"MP{level} correlation energy", energy)
-            adc_wfn.set_variable(f"MP{level} total energy", mp.energy(level))
+            adc_wfn.set_variable(f"MP{level} CORRELATION ENERGY", energy)
+            adc_wfn.set_variable(f"MP{level} TOTAL ENERGY", mp.energy(level))
             core.print_out(f"    Energy correlation MP{level}   {energy:15.8g} [Eh]\n")
         core.print_out("    Energy             total {0:15.8g} [Eh]\n".format(mp_energy))
-    adc_wfn.set_variable("current correlation energy", mp_corr)
-    adc_wfn.set_variable("current energy", mp_energy)
+    adc_wfn.set_variable("CURRENT CORRELATION ENERGY", mp_corr)  # P::e ADC
+    adc_wfn.set_variable("CURRENT ENERGY", mp_energy)  # P::e ADC
 
     # Set results of excited-states computation
     # TODO Does not work: Can't use strings
     # adc_wfn.set_variable("excitation kind", state.kind)
-    adc_wfn.set_variable("number of iterations", state.n_iter)
+    adc_wfn.set_variable("ADC ITERATIONS", state.n_iter)  # P::e ADC
     adc_wfn.set_variable(name + " excitation energies",
                          core.Matrix.from_array(state.excitation_energy.reshape(-1, 1)))
     adc_wfn.set_variable("number of excited states", len(state.excitation_energy))
@@ -4164,7 +4192,7 @@ def run_sapt(name, **kwargs):
     if do_delta_mp2:
         select_mp2(name, ref_wfn=monomerB_wfn, **kwargs)
         mp2_corl_interaction_e -= core.variable('MP2 CORRELATION ENERGY')
-        core.set_variable('SAPT MP2 CORRELATION ENERGY', mp2_corl_interaction_e)
+        core.set_variable("SAPT MP2 CORRELATION ENERGY", mp2_corl_interaction_e)  # P::e SAPT
     core.set_global_option('DF_INTS_IO', df_ints_io)
 
     if core.get_option('SCF', 'REFERENCE') == 'RHF':
@@ -4403,7 +4431,7 @@ def run_sapt_ct(name, **kwargs):
         tuple(CTm * u for u in units))
     core.print_out('    SAPT Charge Transfer          %12.4lf [mEh] %12.4lf [kcal/mol] %12.4lf [kJ/mol]\n\n' %
         tuple(CT * u for u in units))
-    core.set_variable('SAPT CT ENERGY', CT)
+    core.set_variable("SAPT CT ENERGY", CT)  # P::e SAPT
 
     optstash.restore()
     return dimer_wfn
@@ -4468,7 +4496,7 @@ def run_fisapt(name, **kwargs):
 
     fisapt_wfn = core.FISAPT(ref_wfn)
     from .sapt import fisapt_proc
-    fisapt_wfn.compute_energy()
+    fisapt_wfn.compute_energy(external_potentials=kwargs.get("external_potentials", None))
 
     # Compute -D dispersion
     if "-d" in name.lower():
@@ -5103,7 +5131,7 @@ def run_efp(name, **kwargs):
 
         torq = efpobj.get_gradient()
         torq = core.Matrix.from_array(np.asarray(torq).reshape(-1, 6))
-        core.set_variable('EFP TORQUE', torq)
+        core.set_variable("EFP TORQUE", torq)  # P::e EFP
 
     return ene['total']
 

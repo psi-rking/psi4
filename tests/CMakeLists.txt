@@ -56,14 +56,14 @@ foreach(test_name adc1 adc2 casscf-fzc-sp casscf-semi casscf-sa-sp ao-casscf-sp 
                   dfomp2p5-grad2 dfrasscf-sp dfscf-bz2 dft-b2plyp dft-grac dft-ghost dft-grad-meta
                   dft-freq dft-freq-analytic dft-grad1 dft-grad2 dft-psivar dft-b3lyp dft1 dft-vv10
                   dft1-alt dft2 dft3 dft-omega dft-dens-cut docs-bases docs-dft explicit-am-basis extern1 extern2 extern3
-                  fsapt1 fsapt2 fsapt-terms fsapt-allterms fsapt-ext isapt1 isapt2
+                  fsapt1 fsapt2 fsapt-terms fsapt-allterms fsapt-ext fsapt-ext-abc fsapt-ext-abc2 isapt1 isapt2
                   fci-dipole fci-h2o fci-h2o-2 fci-h2o-fzcv fci-tdm fci-tdm-2
                   fci-coverage
                   fcidump
                   fd-freq-energy fd-freq-energy-large fd-freq-gradient
                   fd-freq-gradient-large fd-gradient freq-isotope1 freq-isotope2 fnocc1 fnocc2
-                  fnocc3 fnocc4 fnocc5 frac frac-ip-fitting frac-traverse ghosts gibbs
-                  lccd-grad1 lccd-grad2 matrix1 mbis-1 mbis-2 mbis-3 mbis-4 mbis-5 mcscf1 mcscf2 mcscf3
+                  fnocc3 fnocc4 fnocc5 fnocc6 frac frac-ip-fitting frac-traverse ghosts gibbs
+                  lccd-grad1 lccd-grad2 matrix1 mbis-1 mbis-2 mbis-3 mbis-4 mbis-5 mbis-6 mcscf1 mcscf2 mcscf3
                   mints1 mints2 mints3 mints4 mints5 mints6 mints8 mints-benchmark mints-helper
                   mints9 mints10 mints15 molden1 molden2 mom mp2-1  mp2-def2 mp2-grad1 mp2-grad2 mp2-h
                   mp2p5-grad1 mp2p5-grad2 mp3-grad1 mp3-grad2
@@ -95,7 +95,7 @@ foreach(test_name adc1 adc2 casscf-fzc-sp casscf-semi casscf-sa-sp ao-casscf-sp 
                   options1 cubeprop-esp dft-smoke scf-hess1 scf-hess2 scf-hess3 scf-hess4 scf-hess5 scf-freq1 dft-jk scf-coverage
                   dft-custom-dhdf dft-custom-hybrid dft-custom-mgga dft-custom-gga
                   pywrap-bfs pywrap-align pywrap-align-chiral mints12 cc-module
-                  tdscf-1 tdscf-2 tdscf-3 tdscf-4
+                  tdscf-1 tdscf-2 tdscf-3 tdscf-4 tdscf-5
                   basis-ecp dft-pruning freq-masses sapt9 sapt10
 )
     add_subdirectory(${test_name})
@@ -144,13 +144,6 @@ endif()
 if(ENABLE_CheMPS2)
     add_subdirectory(chemps2)
     message(STATUS "Adding test cases: Psi4 + CheMPS2")
-endif()
-
-# <<<  CPPE  >>>
-
-if(ENABLE_cppe)
-    add_subdirectory(cppe)
-    message(STATUS "Adding test cases: Psi4 + CPPE")
 endif()
 
 # <<<  DFTD3  >>>

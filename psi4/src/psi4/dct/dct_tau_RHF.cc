@@ -31,7 +31,6 @@
 
 #include "psi4/libdpd/dpd.h"
 #include "psi4/libqt/qt.h"
-#include "psi4/libiwl/iwl.hpp"
 #include "psi4/libmints/molecule.h"
 #include "psi4/psifiles.h"
 #include "psi4/libtrans/integraltransform.h"
@@ -60,11 +59,6 @@ void DCTSolver::build_d_R() {
     dpdbuf4 L1, L2;
     dpdfile2 T_OO, T_VV;
 
-    /*
-     * The following 4 lines are not able to dump Tau <O|O>'s onto PSIF_DCT_DPD
-     * T_OO's are assigned zero at the first time but it has correct symmetry blocks (correct size)
-     * Tau <O|O> are save on PSIF_DCT_DPD after contract442
-     */
     global_dpd_->file2_init(&T_OO, PSIF_DCT_DPD, 0, ID('O'), ID('O'), "Tau <O|O>");
     global_dpd_->file2_init(&T_VV, PSIF_DCT_DPD, 0, ID('V'), ID('V'), "Tau <V|V>");
 
@@ -234,47 +228,10 @@ void DCTSolver::transform_tau_R() {
     global_dpd_->file2_init(&T_OO, PSIF_DCT_DPD, 0, ID('O'), ID('O'), "Tau <O|O>");
     global_dpd_->file2_init(&T_VV, PSIF_DCT_DPD, 0, ID('V'), ID('V'), "Tau <V|V>");
 
-    global_dpd_->file2_mat_init(&T_OO);
-    global_dpd_->file2_mat_init(&T_VV);
-    global_dpd_->file2_mat_rd(&T_OO);
-    global_dpd_->file2_mat_rd(&T_VV);
-
     // Zero SO tau arrays before computing it in the MO basis
     tau_so_a_->zero();
-
-    for (int h = 0; h < nirrep_; ++h) {
-        if (nsopi_[h] == 0) continue;
-
-        double **temp = block_matrix(nsopi_[h], nsopi_[h]);
-        /*
-         * Backtransform the Tau matrices to the AO basis: soTau = C moTau Ct
-         * Attn: the forward MO->AO transformation would be: moTau = Ct S soTau S C
-         */
-        double **paOccC = aocc_c_->pointer(h);
-        double **paVirC = avir_c_->pointer(h);
-        double **pa_tau_ = tau_so_a_->pointer(h);
-
-        // Alpha occupied
-        if (naoccpi_[h] && nsopi_[h]) {
-            C_DGEMM('n', 'n', nsopi_[h], naoccpi_[h], naoccpi_[h], 1.0, paOccC[0], naoccpi_[h], T_OO.matrix[h][0],
-                    naoccpi_[h], 0.0, temp[0], nsopi_[h]);
-            C_DGEMM('n', 't', nsopi_[h], nsopi_[h], naoccpi_[h], 1.0, temp[0], nsopi_[h], paOccC[0], naoccpi_[h], 1.0,
-                    pa_tau_[0], nsopi_[h]);
-        }
-
-        // Alpha virtual
-        if (navirpi_[h] && nsopi_[h]) {
-            C_DGEMM('n', 'n', nsopi_[h], navirpi_[h], navirpi_[h], 1.0, paVirC[0], navirpi_[h], T_VV.matrix[h][0],
-                    navirpi_[h], 0.0, temp[0], nsopi_[h]);
-            C_DGEMM('n', 't', nsopi_[h], nsopi_[h], navirpi_[h], 1.0, temp[0], nsopi_[h], paVirC[0], navirpi_[h], 1.0,
-                    pa_tau_[0], nsopi_[h]);
-        }
-
-        free_block(temp);
-    }
-
-    global_dpd_->file2_mat_close(&T_OO);
-    global_dpd_->file2_mat_close(&T_VV);
+    tau_so_a_->add(linalg::triplet(*aocc_c_, Matrix(&T_OO), *aocc_c_, false, false, true));
+    tau_so_a_->add(linalg::triplet(*avir_c_, Matrix(&T_VV), *avir_c_, false, false, true));
 
     global_dpd_->file2_close(&T_OO);
     global_dpd_->file2_close(&T_VV);

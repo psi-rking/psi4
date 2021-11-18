@@ -32,7 +32,6 @@
 #include "psi4/libtrans/integraltransform.h"
 #include "psi4/libpsio/psio.hpp"
 #include "psi4/libqt/qt.h"
-#include "psi4/libiwl/iwl.h"
 #include "psi4/libdiis/diismanager.h"
 #include "psi4/libpsi4util/PsiOutStream.h"
 #include "psi4/liboptions/liboptions.h"
@@ -209,15 +208,6 @@ void DCTSolver::compute_orbital_gradient() {
     Fb_->copy(so_h_);
     // Build the new Fock matrix from the SO integrals: F += Gbar * Kappa
     process_so_ints();
-    // Form F0 matrix
-    moF0a_->copy(Fa_);
-    moF0b_->copy(Fb_);
-    // Transform the F0 matrix to the MO basis
-    moF0a_->transform(Ca_);
-    moF0b_->transform(Cb_);
-    // Add non-idempotent density contribution (Tau) to the Fock matrix: F += Gbar * Tau
-    Fa_->add(g_tau_a_);
-    Fb_->add(g_tau_b_);
     // Copy the SO basis Fock for the transformation to the MO basis
     moFa_->copy(Fa_);
     moFb_->copy(Fb_);
@@ -1899,13 +1889,14 @@ void DCTSolver::compute_orbital_rotation_nr() {
     int orbitals_address = 0;
     int idpcount = 0;
     // Alpha spin
+    auto X_a = Matrix("Alpha orbital step", nirrep_, nmopi_, nmopi_);
     for (int h = 0; h < nirrep_; ++h) {
         for (int i = 0; i < naoccpi_[h]; ++i) {
             for (int a = 0; a < navirpi_[h]; ++a) {
                 if (lookup_orbitals_[orbitals_address]) {
                     double value = X_->get(idpcount);
-                    X_a_->set(h, i, a + naoccpi_[h], value);
-                    X_a_->set(h, a + naoccpi_[h], i, (-1.0) * value);
+                    X_a.set(h, i, a + naoccpi_[h], value);
+                    X_a.set(h, a + naoccpi_[h], i, (-1.0) * value);
                     idpcount++;
                 }
                 orbitals_address++;
@@ -1914,13 +1905,14 @@ void DCTSolver::compute_orbital_rotation_nr() {
     }
 
     // Beta spin
+    auto X_b = Matrix("Beta orbital step", nirrep_, nmopi_, nmopi_);
     for (int h = 0; h < nirrep_; ++h) {
         for (int i = 0; i < nboccpi_[h]; ++i) {
             for (int a = 0; a < nbvirpi_[h]; ++a) {
                 if (lookup_orbitals_[orbitals_address]) {
                     double value = X_->get(idpcount);
-                    X_b_->set(h, i, a + nboccpi_[h], value);
-                    X_b_->set(h, a + nboccpi_[h], i, (-1.0) * value);
+                    X_b.set(h, i, a + nboccpi_[h], value);
+                    X_b.set(h, a + nboccpi_[h], i, (-1.0) * value);
                     idpcount++;
                 }
                 orbitals_address++;
@@ -1928,8 +1920,8 @@ void DCTSolver::compute_orbital_rotation_nr() {
         }
     }
 
-    Xtotal_a_->add(X_a_);
-    Xtotal_b_->add(X_b_);
+    Xtotal_a_->add(X_a);
+    Xtotal_b_->add(X_b);
 }
 
 void DCTSolver::update_cumulant_nr() {
