@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2021 The Psi4 Developers.
+ * Copyright (c) 2007-2022 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -74,7 +74,7 @@ void DCTSolver::transform_integrals() {
     _ints->update_orbitals();
     if (options_.get_str("DCT_TYPE") == "DF") {
         // Transform b(Q|mn) to b(Q|pq) in MO basis
-        transform_b();
+        transform_b_so2mo();
         psio_->open(PSIF_LIBTRANS_DPD, PSIO_OPEN_OLD);
         /*- Transform g(OV|OV) -*/
         form_df_g_ovov();

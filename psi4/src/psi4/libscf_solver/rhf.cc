@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2021 The Psi4 Developers.
+ * Copyright (c) 2007-2022 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -41,8 +41,6 @@
 #include "psi4/physconst.h"
 
 #include "psi4/libciomr/libciomr.h"
-#include "psi4/libdiis/diisentry.h"
-#include "psi4/libdiis/diismanager.h"
 #include "psi4/libdpd/dpd.h"
 #include "psi4/libfock/jk.h"
 #include "psi4/libfock/v.h"
@@ -104,7 +102,6 @@ void RHF::common_init() {
     Da_ = SharedMatrix(factory_->create_matrix("SCF density"));
     Db_ = Da_;
     Lagrangian_ = SharedMatrix(factory_->create_matrix("X"));
-    D_ = Da_;
     Dold_ = SharedMatrix(factory_->create_matrix("D old"));
     Va_ = SharedMatrix(factory_->create_matrix("V"));
     Vb_ = Va_;
@@ -140,10 +137,8 @@ void RHF::finalize() {
     HF::finalize();
 }
 
-SharedMatrix RHF::Da() const { return D_; }
-
 void RHF::save_density_and_energy() {
-    Dold_->copy(D_);  // Save previous density
+    Dold_->copy(Da_);  // Save previous density
 }
 
 void forPermutation(int depth, std::vector<int>& array, std::vector<int>& indices, int curDepth,
@@ -176,7 +171,7 @@ void RHF::form_V() {
     // // Pull the V matrices off
     // const std::vector<SharedMatrix> & V = potential_->V();
     // Va_ = V[0];
-    potential_->set_D({D_});
+    potential_->set_D({Da_});
     potential_->compute_V({Va_});
     Vb_ = Va_;
 }
@@ -209,10 +204,10 @@ void RHF::form_G() {
     }
 
     G_->axpy(2.0, J_);
-    
+
     double alpha = functional_->x_alpha();
     double beta = functional_->x_beta();
-    
+
 #ifdef USING_BrianQC
     if (brianEnable and brianEnableDFT) {
         // BrianQC multiplies with the exact exchange factors inside the Fock building, so we must not do it here
@@ -220,8 +215,8 @@ void RHF::form_G() {
         beta = 1.0;
     }
 #endif
-    
-    if (functional_->is_x_hybrid() && !(functional_->is_x_lrc() && jk_->get_wcombine()) ) {
+
+    if (functional_->is_x_hybrid() && !(functional_->is_x_lrc() && jk_->get_wcombine())) {
         G_->axpy(-alpha, K_);
     } else {
         K_->zero();
@@ -236,37 +231,7 @@ void RHF::form_G() {
     } else {
         wK_->zero();
     }
-
 }
-
-double RHF::compute_orbital_gradient(bool save_fock, int max_diis_vectors) {
-    // Conventional DIIS (X'[FDS - SDF]X, where X levels things out)
-    SharedMatrix gradient = form_FDSmSDF(Fa_, Da_);
-
-    if (save_fock) {
-        if (initialized_diis_manager_ == false) {
-            if (scf_type_ == "DIRECT") {
-                diis_manager_ = std::make_shared<DIISManager>(max_diis_vectors, "HF DIIS vector",
-                                                              DIISManager::LargestError, DIISManager::InCore);
-            } else {
-                diis_manager_ = std::make_shared<DIISManager>(max_diis_vectors, "HF DIIS vector",
-                                                              DIISManager::LargestError, DIISManager::OnDisk);
-            }
-            diis_manager_->set_error_vector_size(1, DIISEntry::Matrix, gradient.get());
-            diis_manager_->set_vector_size(1, DIISEntry::Matrix, Fa_.get());
-            initialized_diis_manager_ = true;
-        }
-        diis_manager_->add_entry(2, gradient.get(), Fa_.get());
-    }
-
-    if (options_.get_bool("DIIS_RMS_ERROR")) {
-        return gradient->rms();
-    } else {
-        return gradient->absmax();
-    }
-}
-
-bool RHF::diis() { return diis_manager_->extrapolate(1, Fa_.get()); }
 
 void RHF::form_F() {
     Fa_->copy(H_);
@@ -286,13 +251,24 @@ void RHF::form_F() {
     }
 }
 
-void RHF::form_C() {
-    diagonalize_F(Fa_, Ca_, epsilon_a_);
+void RHF::form_C(double shift) {
+    if (shift == 0.0) {
+        diagonalize_F(Fa_, Ca_, epsilon_a_);
+    } else {
+        auto shifted_F = SharedMatrix(factory_->create_matrix("F"));
+        auto Cvir = Ca_subset("SO", "VIR");
+
+        auto SCvir = std::make_shared<Matrix>(nirrep_, S_->rowspi(), Cvir->colspi());
+        SCvir->gemm(false, false, 1.0, S_, Cvir, 0.0);
+        shifted_F->gemm(false, true, shift, SCvir, SCvir, 0.0);
+        shifted_F->add(Fa_);
+        diagonalize_F(shifted_F, Ca_, epsilon_a_);
+    }
     find_occupation();
 }
 
 void RHF::form_D() {
-    D_->zero();
+    Da_->zero();
 
     for (int h = 0; h < nirrep_; ++h) {
         int nso = nsopi_[h];
@@ -302,30 +278,30 @@ void RHF::form_D() {
         if (nso == 0 || nmo == 0) continue;
 
         double** Ca = Ca_->pointer(h);
-        double** D = D_->pointer(h);
+        double** D = Da_->pointer(h);
 
         C_DGEMM('N', 'T', nso, nso, na, 1.0, Ca[0], nmo, Ca[0], nmo, 0.0, D[0], nso);
     }
 
     if (debug_) {
         outfile->Printf("in RHF::form_D:\n");
-        D_->print();
+        Da_->print();
     }
 }
 
 void RHF::damping_update(double damping_percentage) {
-    D_->scale(1.0 - damping_percentage);
-    D_->axpy(damping_percentage, Dold_);
+    Da_->scale(1.0 - damping_percentage);
+    Da_->axpy(damping_percentage, Dold_);
 }
 
 double RHF::compute_initial_E() {
-    double Etotal = nuclearrep_ + D_->vector_dot(H_);
+    double Etotal = nuclearrep_ + Da_->vector_dot(H_);
     return Etotal;
 }
 
 double RHF::compute_E() {
-    double one_electron_E = 2.0 * D_->vector_dot(H_);
-    double coulomb_E = 2.0 * D_->vector_dot(J_);
+    double one_electron_E = 2.0 * Da_->vector_dot(H_);
+    double coulomb_E = 2.0 * Da_->vector_dot(J_);
 
     double XC_E = 0.0;
     double VV10_E = 0.0;
@@ -337,10 +313,10 @@ double RHF::compute_E() {
     }
 
     double exchange_E = 0.0;
-    
+
     double alpha = functional_->x_alpha();
     double beta = functional_->x_beta();
-    
+
 #ifdef USING_BrianQC
     if (brianEnable and brianEnableDFT) {
         // BrianQC multiplies with the exact exchange factors inside the Fock building, so we must not do it here
@@ -348,7 +324,7 @@ double RHF::compute_E() {
         beta = 1.0;
     }
 #endif
-    
+
     if (functional_->is_x_hybrid()) {
         exchange_E -= alpha * Da_->vector_dot(K_);
     }
@@ -360,7 +336,7 @@ double RHF::compute_E() {
         }
     }
 
-    double two_electron_E = D_->vector_dot(Fa_) - 0.5 * one_electron_E;
+    double two_electron_E = Da_->vector_dot(Fa_) - 0.5 * one_electron_E;
 
     energies_["Nuclear"] = nuclearrep_;
     energies_["One-Electron"] = one_electron_E;
@@ -429,10 +405,10 @@ std::vector<SharedMatrix> RHF::onel_Hx(std::vector<SharedMatrix> x_vec) {
             Cv = Cvir_so;
         }
 
-        SharedMatrix tmp1 = linalg::triplet(Co, F, Co, true, false, false);
-        SharedMatrix result = linalg::doublet(tmp1, x_vec[i], false, false);
+        auto tmp1 = linalg::triplet(Co, F, Co, true, false, false);
+        auto result = linalg::doublet(tmp1, x_vec[i], false, false);
 
-        SharedMatrix tmp2 = linalg::triplet(x_vec[i], Cv, F, false, true, false);
+        auto tmp2 = linalg::triplet(x_vec[i], Cv, F, false, true, false);
         result->gemm(false, false, -1.0, tmp2, Cv, 1.0);
 
         ret.push_back(result);
@@ -516,7 +492,7 @@ std::vector<SharedMatrix> RHF::twoel_Hx(std::vector<SharedMatrix> x_vec, bool co
         }
         potential_->compute_Vx(Dx, Vx);
     }
-    
+
     std::vector<SharedMatrix> V_ext_pert;
     for (const auto& pert : external_cpscf_perturbations_) {
         if (print_ > 1) outfile->Printf("Adding external CPSCF contribution %s.\n", pert.first.c_str());
@@ -528,11 +504,11 @@ std::vector<SharedMatrix> RHF::twoel_Hx(std::vector<SharedMatrix> x_vec, bool co
 
     Cl.clear();
     Cr.clear();
-    
+
     // Build return vector, ohyea thats fun
     double alpha = functional_->x_alpha();
     double beta = functional_->x_beta();
-    
+
 #ifdef USING_BrianQC
     if (brianEnable and brianEnableDFT) {
         // BrianQC multiplies with the exact exchange factors inside the Fock building, so we must not do it here
@@ -540,7 +516,7 @@ std::vector<SharedMatrix> RHF::twoel_Hx(std::vector<SharedMatrix> x_vec, bool co
         beta = 1.0;
     }
 #endif
-    
+
     std::vector<SharedMatrix> ret;
     if (combine) {
         // Cocc_ni (4 * J[D]_nm - K[D]_nm - K[D]_mn) C_vir_ma
@@ -564,7 +540,9 @@ std::vector<SharedMatrix> RHF::twoel_Hx(std::vector<SharedMatrix> x_vec, bool co
         }
     } else {
         if (jk_->get_wcombine()) {
-            throw PSIEXCEPTION("RHF::twoel_Hx user asked for wcombine but combine==false in SCF::twoel_Hx. Please set wcombine false in your input.");
+            throw PSIEXCEPTION(
+                "RHF::twoel_Hx user asked for wcombine but combine==false in SCF::twoel_Hx. Please set wcombine false "
+                "in your input.");
         }
         for (size_t i = 0; i < x_vec.size(); i++) {
             // always have a J-like piece (optionally include Xc)
@@ -1025,7 +1003,6 @@ std::shared_ptr<RHF> RHF::c1_deep_copy(std::shared_ptr<BasisSet> basis) {
     if (Da_) {
         hf_wfn->Da_ = Da_subset("AO");
         hf_wfn->Db_ = hf_wfn->Da_;
-        hf_wfn->D_ = hf_wfn->Da_;
     }
     if (Fa_) {
         hf_wfn->Fa_ = Fa_subset("AO");

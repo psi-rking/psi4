@@ -15,9 +15,9 @@ else()
         # Default: use a stable release tarball of libxc. To use the
         # development version of libxc, instead, comment the URL line,
         # and uncomment the GIT lines.
-        URL https://gitlab.com/libxc/libxc/-/archive/5.1.2/libxc-5.1.2.tar.gz
+        URL https://gitlab.com/libxc/libxc/-/archive/5.1.5/libxc-5.1.5.tar.gz
         #GIT_REPOSITORY https://gitlab.com/libxc/libxc.git
-        #GIT_TAG 5.1.2
+        #GIT_TAG 5.1.5
         #UPDATE_COMMAND ""
         CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${STAGED_INSTALL_PREFIX}
                    -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
@@ -34,6 +34,8 @@ else()
                    -DENABLE_GENERIC=${ENABLE_GENERIC}
                    -DLIBC_INTERJECT=${LIBC_INTERJECT}
                    -DBUILD_TESTING=OFF
+                   -DCMAKE_OSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}
+                   -DCMAKE_OSX_SYSROOT=${CMAKE_OSX_SYSROOT}
         CMAKE_CACHE_ARGS -DCMAKE_C_FLAGS:STRING=${CMAKE_C_FLAGS})
 
     set(Libxc_DIR ${STAGED_INSTALL_PREFIX}/share/cmake/Libxc CACHE PATH "path to internally built LibxcConfig.cmake" FORCE)

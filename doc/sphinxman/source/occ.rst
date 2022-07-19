@@ -3,7 +3,7 @@
 .. #
 .. # Psi4: an open-source quantum chemistry software package
 .. #
-.. # Copyright (c) 2007-2021 The Psi4 Developers.
+.. # Copyright (c) 2007-2022 The Psi4 Developers.
 .. #
 .. # The copyrights for code used from other parties are included in
 .. # the corresponding files.
@@ -315,7 +315,6 @@ Advanced OCC Keywords
 ~~~~~~~~~~~~~~~~~~~~~
 
 .. include:: /autodir_options_c/occ__opt_method.rst
-.. include:: /autodir_options_c/occ__mo_diis_num_vecs.rst
 .. include:: /autodir_options_c/occ__lineq_solver.rst
 .. include:: /autodir_options_c/occ__orth_type.rst
 .. include:: /autodir_options_c/occ__mp2_os_scale.rst
@@ -420,7 +419,7 @@ Starting in v1.4, MP2.5 and MP3 default to the density-fit algorithm. Set |globa
     +                         +--------------------------------------------------------------+----------------------+----------------------+---------------------------+
     |                         | Cholesky-Decomposed CCSD(T)                                  | RHF                  | ---                  | |globals__cc_type| CD     |
     +-------------------------+--------------------------------------------------------------+----------------------+----------------------+---------------------------+
-    | ccsd(at)                | Lambda-CCSD(T)                                               | ---                  | ---                  | |globals__cc_type| CONV   |
+    | a-ccsd(t)               | Lambda-CCSD(T)                                               | ---                  | ---                  | |globals__cc_type| CONV   |
     +                         +--------------------------------------------------------------+----------------------+----------------------+---------------------------+
     |                         | Density-Fitted Lambda-CCSD(T)                                | RHF                  | ---                  | |globals__cc_type| DF     |
     +                         +--------------------------------------------------------------+----------------------+----------------------+---------------------------+

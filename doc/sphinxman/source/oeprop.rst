@@ -3,7 +3,7 @@
 .. #
 .. # Psi4: an open-source quantum chemistry software package
 .. #
-.. # Copyright (c) 2007-2021 The Psi4 Developers.
+.. # Copyright (c) 2007-2022 The Psi4 Developers.
 .. #
 .. # The copyrights for code used from other parties are included in
 .. # the corresponding files.
@@ -35,8 +35,8 @@
 
 .. _`sec:oeprop`:
 
-Evaluation of One-Electron Properties |w---w| :py:func:`~psi4.oeprop`
-=====================================================================
+Evaluation of One-Electron Properties |w---w| :py:func:`~psi4.driver.oeprop`
+============================================================================
 
 .. codeauthor:: Robert M. Parrish and Andrew C. Simmonett
 .. sectionauthor:: Andrew C. Simmonett
@@ -58,7 +58,7 @@ summarized in the table below.
    +------------------------------------+-----------------------+-----------------------------------------------------------------------------------+
    | Electric quadrupole moment         | QUADRUPOLE            | Raw (traced) moments and traceless multipoles                                     |
    +------------------------------------+-----------------------+-----------------------------------------------------------------------------------+
-   | All moments up order N             | MULTIPOLE(N)          | Only raw (traced) moments. Sets global variables e.g. "DIPOLE X", "32-POLE XYYZZ" |
+   | All moments up order N             | MULTIPOLE(N)          | Only raw (traced) moments. Sets global variables e.g. "DIPOLE", "32-POLE"         |
    +------------------------------------+-----------------------+-----------------------------------------------------------------------------------+
    | Electrostatic potential, at nuclei | ESP_AT_NUCLEI         | Sets global variables "ESP AT CENTER n", n = 1 to natoms                          |
    +------------------------------------+-----------------------+-----------------------------------------------------------------------------------+
@@ -79,6 +79,8 @@ summarized in the table below.
    | Natural orbital occupations        | NO_OCCUPATIONS        |                                                                                   |
    +------------------------------------+-----------------------+-----------------------------------------------------------------------------------+
    | Stockholder Atomic Multipoles      | MBIS_CHARGES          | Generates atomic charges, dipoles, etc. See :ref:`sec:oeprop_mbis`                |
+   +------------------------------------+-----------------------+-----------------------------------------------------------------------------------+
+   | Free-atom volumes                  | MBIS_VOLUME_RATIOS    |                                                                                   |
    +------------------------------------+-----------------------+-----------------------------------------------------------------------------------+
 
 There are two ways the computation of one-electron properties can be requested. 
@@ -104,8 +106,8 @@ computed using the built-in properties() function, e.g.::
 
   properties('ccsd', properties=['dipole'])
 
-The :py:func:`~psi4.properties` function provides limited functionality, but is a lot easier to
-use for correlated methods. For capabilities of :py:func:`~psi4.properties` see the
+The :py:func:`~psi4.driver.properties` function provides limited functionality, but is a lot easier to
+use for correlated methods. For capabilities of :py:func:`~psi4.driver.properties` see the
 corresponding section of the manual.
 
 
@@ -171,7 +173,7 @@ manipulated using standard Python syntax.  For a complete demonstration of this
 utility, see the :srcsample:`props4` test case.
 
 
-..index:: ISA; MBIS
+.. index:: ISA; MBIS
 
 .. _`sec:oeprop_mbis`:
 
@@ -180,8 +182,15 @@ Minimal Basis Iterative Stockholder
 
 The Minimal Basis Iterative Stockholder (MBIS) method is one of many procedures
 that partitions a molecular one-particle density matrix into atomic electron densities.
-Running MBIS in |PSIfour| will calculate atomic charges, as well as dipoles, quadrupoles, and
-octupoles. The allowed number of iterations and convergence criteria for the stockholder 
+Running MBIS in |PSIfour| will calculate atomic valence charge widths, volume ratios,
+atomic charges, as well as dipoles, quadrupoles, and octupoles. 
+Additionally, all expectation values of radial moments of n-th order (:math:`<r^n>`) 
+are computed up to fourth order. Higher moments can be computed by specifying |globals__max_radial_moment|.
+The volume ratios are computed as the ratio between the volume of the atomic density
+(:math:`<r^3>`) and the volume of the free atom computed using the same level
+of theory, but with a potentially unrestricted reference.
+
+The allowed number of iterations and convergence criteria for the stockholder 
 algorithm is controlled by |globals__mbis_maxiter| and |globals__mbis_d_convergence|. Note 
 that the density is partitioned on a molecular quadrature grid, the details of which can be
 controlled with the keywords |globals__mbis_radial_points|, |globals__mbis_spherical_points|, and 

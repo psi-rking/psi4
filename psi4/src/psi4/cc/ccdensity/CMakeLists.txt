@@ -104,10 +104,12 @@ target_sources(cc
     ${CMAKE_CURRENT_SOURCE_DIR}/td_print.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/td_setup.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/tdensity.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/to_matrix.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/transL.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/transdip.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/transp.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/twopdm.cc
+    ${CMAKE_CURRENT_SOURCE_DIR}/wfn_saver.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/x_Gabcd.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/x_Gciab.cc
     ${CMAKE_CURRENT_SOURCE_DIR}/x_Gciab_uhf.cc

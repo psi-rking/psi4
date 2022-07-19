@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2021 The Psi4 Developers.
+ * Copyright (c) 2007-2022 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -31,6 +31,7 @@
 #include <ostream>
 #include <regex>
 #include <sstream>
+#include <iterator>
 #include <string>
 
 #include "psi4/psi4-dec.h"
@@ -115,7 +116,7 @@ class PluginFileManager {
         std::string format_source_list = imploded.str();
         std::string format_plugin(plugin_name_);
         std::string format_PLUGIN = plugin_name_;
-        std::transform(format_PLUGIN.begin(), format_PLUGIN.end(), format_PLUGIN.begin(), ::toupper);
+        to_upper(format_PLUGIN);
         std::string format_ldflags(TOSTRING(PLUGIN_LDFLAGS));
 
         trim_spaces(format_source_list);

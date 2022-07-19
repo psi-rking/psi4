@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2021 The Psi4 Developers.
+ * Copyright (c) 2007-2022 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -38,6 +38,7 @@
 #include "psi4/libpsi4util/libpsi4util.h"  // Needed for Ref counting, string splitting, and conversions
 #include "psi4/libpsi4util/PsiOutStream.h"
 #include "psi4/libpsi4util/process.h"
+#include "psi4/libpsi4util/libpsi4util.h"
 
 namespace psi {
 
@@ -52,7 +53,7 @@ void DataType::changed() { changed_ = true; }
 
 void DataType::dechanged() { changed_ = false; }
 
-void DataType::to_upper(std::string& str) const { std::transform(str.begin(), str.end(), str.begin(), ::toupper); }
+void DataType::to_upper(std::string& str) const { psi::to_upper(str); }
 
 void DataType::add_choices(std::string str) {
     printf("I am here!\n");
@@ -513,12 +514,12 @@ void Options::set_current_module(const std::string s) {
     all_local_options_.clear();
 }
 
-void Options::to_upper(std::string& str) const { std::transform(str.begin(), str.end(), str.begin(), ::toupper); }
+void Options::to_upper(std::string& str) const { psi::to_upper(str); }
 
 void Options::validate_options() {
-    std::map<std::string, Data>::const_iterator iter = locals_[current_module_].begin();
-    std::map<std::string, Data>::const_iterator stop = locals_[current_module_].end();
-    std::map<std::string, Data>::const_iterator not_found = all_local_options_.end();
+    auto iter = locals_[current_module_].begin();
+    auto stop = locals_[current_module_].end();
+    auto not_found = all_local_options_.end();
     for (; iter != stop; ++iter) {
         if (iter->second.has_changed()) {
             if (all_local_options_.find(iter->first) == not_found)
@@ -944,14 +945,6 @@ double Options::get_double(std::string key) const { return (use(key).to_double()
 
 std::string Options::get_str(std::string key) const { return (use(key).to_string()); }
 
-int* Options::get_int_array(std::string key) const {
-    int* array = new int[use(key).size()];
-    for (size_t i = 0; i < use(key).size(); ++i) {
-        array[i] = use(key)[i].to_integer();
-    }
-    return array;
-}
-
 void Options::fill_int_array(std::string key, int* empty_array) const {
     for (size_t i = 0; i < use(key).size(); ++i) {
         empty_array[i] = use(key)[i].to_integer();
@@ -981,8 +974,6 @@ std::vector<double> Options::get_double_vector(std::string key) const {
     }
     return array;
 }
-
-const char* Options::get_cstr(std::string key) const { return (use(key).to_string().c_str()); }
 
 Data& Options::operator[](std::string key) { return use(key); }
 }  // namespace psi

@@ -3,7 +3,7 @@
 .. #
 .. # Psi4: an open-source quantum chemistry software package
 .. #
-.. # Copyright (c) 2007-2021 The Psi4 Developers.
+.. # Copyright (c) 2007-2022 The Psi4 Developers.
 .. #
 .. # The copyrights for code used from other parties are included in
 .. # the corresponding files.
@@ -42,7 +42,7 @@ Basis Set Superposition Corrections
 
 .. codeauthor:: Daniel G. A. Smith
 
-.. autofunction:: psi4.driver.driver_nbody.nbody_gufunc(func, method_string [, molecule, bsse_type, max_nbody, ptype, return_total_data])
+.. autofunction:: psi4.driver.driver_nbody.nbody(func, method_string [, molecule, bsse_type, max_nbody, ptype, return_total_data])
 
 
 The nbody function computes counterpoise-corrected (CP), non-CP (noCP), and Valiron-Mayer Function Counterpoise (VMFC) interaction energies for complexes composed of arbitrary numbers of monomers.
@@ -50,26 +50,41 @@ The nbody function computes counterpoise-corrected (CP), non-CP (noCP), and Vali
 
 **Examples :** ::
 
-    # Counterpoise corrected CCSD(T) energy for the Helium dimer
+    # Counterpoise corrected CCSD(T) energies for the Helium dimer
     molecule mol {
       He
-      -- 
+      --
       He 1 3
     }
+    # Calculate interaction energies only (skips monomers in monomer basis):
+    energy('CCSD(T)', bsse_type='cp')
+    # Calculate interaction and total energies, return interaction energies:
+    energy('CCSD(T)', bsse_type=['cp','nocp'])
+    # Calculate and return counterpoise-corrected gradient
+    # Useful for e.g. CP-corrected geometry optimization
+    gradient('CCSD(T)', bsse_type='cp', return_total_data=True)
 
-    energy('CCSD(T)', bsse_type='cp')   
 
     # noCP, VMFC, and CP energy for a helium cluster, limited at 3 bodies
     molecule mol {
       He 0 0 0
-      -- 
+      --
       He 0 0 4
-      -- 
+      --
       He 0 4 0
       --
       He 4 0 0
     }
 
     # Returns the nocp energy as its first in the list
-    energy('CCSD(T)', bsse_type=['nocp', 'cp', 'vmfc'], max_nbody=3) 
+    energy('CCSD(T)', bsse_type=['nocp', 'cp', 'vmfc'], max_nbody=3)
+
+API
+---
+
+.. autoclass:: psi4.driver.driver_nbody.BsseEnum
+   :members:
+   :undoc-members:
+
+.. autopydantic_model:: psi4.driver.driver_nbody.ManyBodyComputer
 

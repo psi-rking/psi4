@@ -3,7 +3,7 @@
 .. #
 .. # Psi4: an open-source quantum chemistry software package
 .. #
-.. # Copyright (c) 2007-2021 The Psi4 Developers.
+.. # Copyright (c) 2007-2022 The Psi4 Developers.
 .. #
 .. # The copyrights for code used from other parties are included in
 .. # the corresponding files.
@@ -120,6 +120,8 @@ which are useful in elucidating the stability and reactivity of the system.
 .. index::
    pair: SCF; theory
 
+.. _`sec:scftheory`:
+
 Theory
 ~~~~~~
 
@@ -216,6 +218,8 @@ The formation of the Coulomb matrix :math:`J` and the exchange matrix
 very large systems, diagonalization of the Fock matrix can also present a
 significant hurdle.
 
+.. _`sec:scfinput`:
+
 Minimal Input
 ~~~~~~~~~~~~~
 
@@ -236,6 +240,8 @@ energy and density convergence criteria (since single-point, see
 :ref:`SCF Convergence & Algorithm <table:conv_scf>`), a DF ERI algorithm, symmetric
 orthogonalization, DIIS, and a core Hamiltonian guess. For more
 information on any of these options, see the relevant section below.
+
+.. _`sec:scfsymm`:
 
 Spin/Symmetry Treatment
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -316,6 +322,8 @@ actually,::
 
     energy('scf')
 
+.. _`sec:scfbrokensymm`:
+
 Broken Symmetry
 ~~~~~~~~~~~~~~~
 
@@ -332,6 +340,8 @@ keyword to true::
     set reference uhf
     set guess_mix true
     energy('scf')
+
+.. _`sec:scflindep`:
 
 Orthogonalization
 ~~~~~~~~~~~~~~~~~
@@ -441,6 +451,8 @@ assigned to irrep A, and 142 of which are assigned to irrep B. Within irrep A,
 above the eigenvalue cutoff. In total, 284 molecular orbitals are chosen from
 287 AOs/USOs.
 
+.. _`sec:scfguess`:
+
 Initial Guess
 ~~~~~~~~~~~~~
 
@@ -479,14 +491,14 @@ SADNO
     calculation, see [Lehtola:2019:1593]_.
 GWH
     A generalized Wolfsberg-Helmholtz modification of the core
-    Hamiltonian matrix. May be useful in open-shell systems, but is
-    often less accurate than the core guess (see
+    Hamiltonian matrix. Usually less accurate than the core guess: the
+    latter is exact for one-electron systems, GWH is not; see
     [Lehtola:2019:1593]_).
 HUCKEL
     An extended H\ |u_dots|\ ckel guess based on on-the-fly atomic UHF
     calculations alike SAD, see [Lehtola:2019:1593]_.
 READ
-    Read the previous orbitals from a checkpoint file, casting from
+    Read the previous orbitals from a ``wfn`` file, casting from
     one basis to another if needed. Useful for starting anion
     computations from neutral orbitals, or after small geometry
     changes. At present, casting from a different molecular point
@@ -528,23 +540,62 @@ in a 3-21G basis and then casting up to cc-pVTZ is shown below::
 
     energy('scf')
 
+.. _`sec:scfrestart`:
+
+Restarting the SCF
+~~~~~~~~~~~~~~~~~~
+
+Reading orbital data from a previous calculations is done via the ``restart_file`` option,
+where the actual file is a serialized ``wfn`` object (see :ref:`saving the wfn <sec:save_wfn>`)
+By default, the orbital data file of the converged SCF(``psi.PID.name.180.npy``) is deleted
+after |PSIfour| exits or the ``clean()`` function is called. The orbital guess is automatically
+set to ``READ`` when ``restart_file`` is given a ``wfn`` file.
+To write the orbitals after every iteration and keep the orbitals from the last iteration, the ``write_orbitals`` options is available: ::
+
+  energy('scf', write_orbitals='my_mos'),
+
+which writes a ``Wavefunction`` object converted (serialized) to a numpy file called ``my_mos.npy``.
+The restart can then be done as follows: ::
+
+  energy('scf', restart_file='my_mos')
+
+Specifying the ``.npy`` suffix when writing and reading restart files is optional.
+
+Alternatively, the restart can also be done from any previously saved ``wfn`` object. ::
+
+  energy, scf_wfn = energy('scf',return_wfn=True)
+  scf_wfn.to_file('my_wfn')
+  energy('scf', restart_file='my_wfn')
+
+
+For advanced users manipulating or writing custom wavefunction files, note
+that |PSIfour| expects the numpy file on disk to have the ``.npy`` extension, not, e.g., `.npz`.
+
 
 .. index:: DIIS, MOM, damping
+
+.. _`sec:scfconv`:
 
 Convergence Stabilization
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-With regard to convergence stabilization, Pulay's Direct Inversion of the
-Iterative Subspace (DIIS) extrapolation,  Gill's Maximum Overlap Method (MOM),
-and damping are all implemented. A summary of each is presented below,
+A summary of Psi's supported convergence stabilization techniques is presented below:
 
 DIIS [On by Default]
-    DIIS uses previous iterates of the Fock Matrix together
+    DIIS uses previous iterates of the Fock matrix together
     with an error criterion based on the orbital gradient to produce an informed
     estimate of the next Fock Matrix. DIIS is almost always necessary to converge
     the SCF procedure and is therefore turned on by default. In rare cases, the
     DIIS algorithm may need to be modified or turned off altogether, which may be
     accomplished via :term:`options <DIIS (SCF)>`.
+ADIIS [On by Default]
+    ADIIS uses previous iterates of the Fock and density matrices to produce an
+    informed estimate of the next Fock matrix. ADIIS estimates are based on minimizing
+    an energy estimate rather than zeroing the residual, so this performs best in the early
+    iterations. By default, Psi will start using ADIIS before blending the ADIIS step with
+    the DIIS step, eventually using the pure DIIS step. The closely-related EDIIS procedure
+    may be used instead by setting |scf__scf_initial_accelerator|. This is formally identical
+    to ADIIS for HF, but the methods will differ for more general DFT.
 MOM [Off by Default]
     MOM was developed to combat a particular class of convergence failure:
     occupation flipping. In some cases, midway though the SCF procedure, a partially
@@ -565,9 +616,27 @@ MOM [Off by Default]
     be used in concert with DIIS, though care should be taken to not turn MOM on
     until the oscillatory behavior begins.
 Damping [Off by Default]
-    In some cases, a static mixing of Fock Matrices from adjacent iterations can
-    quench oscillations. This mixing, known as "damping" can be activated by setting
-    the |scf__damping_percentage| keyword to a nonzero percent.
+    In some cases, a static mixing of Fock Matrices from adjacent
+    iterations can quench oscillations. This mixing, known as
+    "damping" can be activated by setting the
+    |scf__damping_percentage| keyword to a nonzero percent. Damping is
+    turned off when the DIIS error is smaller than
+    |scf__damping_convergence|.
+Level shifting [Off by default]
+    A commonly used alternative to damping is to use level shifting,
+    which decreases the mixing of occupied and unoccupied orbitals in
+    the SCF update by moving the unoccupied orbitals up in energy. It
+    can be shown that the SCF procedure always converges with a
+    suitably large level shift; however, the larger the shift is, the
+    slower the convergence becomes, and the calculation may end up
+    converging onto a higher lying SCF solution. Because of this, in
+    practice level shifting is most useful in the initial phase of the
+    calculation to reduce the orbital error enough for DIIS to work
+    well. The level shift is controlled by the parameter
+    |scf__level_shift|, and it is turned off when the DIIS error is
+    smaller than |scf__level_shift_cutoff|. Reasonable values for
+    the shift and convergence threshold are 5.0 and 1e-2,
+    respectively.
 SOSCF [Off by Default]
     See :ref:`sec:soscf`
 
@@ -616,6 +685,12 @@ CD
     for gradient computations.  The algorithm to obtain the Cholesky
     vectors is not designed for computations with thousands of basis
     functions.
+COSX
+    An algorithm based on the semi-numerical "chain of spheres exchange" (COSX)
+    approach described in [Neese:2009:98]_. The coulomb term is computed with a
+    direct density-fitting algorithm. The COSX algorithm uses no I/O, scales
+    well with system size, and requires minimal memory, making it ideal for
+    large systems and multi-core CPUs. See the COSX section below for more information.
 
 In some cases the above algorithms have multiple implementations that return
 the same result, but are optimal under different molecules sizes and hardware
@@ -642,7 +717,29 @@ post SCF algorithms require a specific implementation.
 For some of these algorithms, Schwarz and/or density sieving can be used to
 identify negligible integral contributions in extended systems. To activate
 sieving, set the |scf__ints_tolerance| keyword to your desired cutoff
-(1.0E-12 is recommended for most applications).
+(1.0E-12 is recommended for most applications). To choose the type of sieving, set 
+the |globals__screening| keyword to your desired option. For Schwarz screening, set it
+to ``SCHWARZ``, for CSAM, ``CSAM``, and for density matrix-based screening, ``DENSITY``.
+
+SCHWARZ
+    Uses the Cauchy-Schwarz inequality to calculate an upper bounded value of a shell quartet,
+
+.. math:: (PQ|RS) <= \sqrt{(PQ|PQ)(RS|RS)}
+
+CSAM
+    An extension of the Schwarz estimate that also screens over the long range 1/r operator, described in [Thompson:2017:144101]_.
+
+DENSITY
+    An extension of the Schwarz estimate that also screens over elements of the density matrix.
+    For the RHF case, described in [Haser:1989:104]_
+
+.. math:: CON(PQ|RS) <= \sqrt{(PQ|PQ)(RS|RS)} \cdot DCON(PQ, RS)
+
+.. math:: DCON(PQ, RS) = max(4D_{PQ}, 4D_{RS}, D_{PR}, D_{PS}, D_{QR}, D_{QS})
+
+When using density-matrix based integral screening, it is useful to build the J and K matrices
+incrementally, also described in [Haser:1989:104]_, using the difference in the density matrix between iterations, rather than the
+full density matrix. To turn on this option, set |scf__incfock| to ``true``.
 
 We have added the automatic capability to use the extremely fast DF
 code for intermediate convergence of the orbitals, for |globals__scf_type|
@@ -653,6 +750,65 @@ resort will be used.
 To avoid this, either set |scf__df_basis_scf| to an auxiliary
 basis set defined for all atoms in the system, or set |scf__df_scf_guess|
 to false, which disables this acceleration entirely.
+
+COSX Exchange
+~~~~~~~~~~~~~
+
+The semi-numerical COSX algorithm described in [Neese:2009:98]_ evaluates
+two-electron ERIs analytically over one electron coordinate and numerically
+over the other electron coordinate, and belongs to the family of pseudospectral 
+methods originally suggested by Friesner. In COSX, numerical integration is performed on standard
+DFT quadrature grids, which are described in :ref:`sec:dft`.
+Both the accuracy of the COSX algorithm and also the computational
+cost are directly determined by the size of the integration grid, so selection
+of the grid is important. This COSX implementation uses two separate grids.
+The SCF algorithm is first converged on a smaller grid, followed by a final SCF
+iteration on a larger grid. This results in numerical errors comparable to
+performing the entire SCF on the expensive larger grid at a computational cost
+much closer to the smaller grid. The size of the initial grid is controlled by the
+keywords |scf__cosx_radial_points_initial| and |scf__cosx_spherical_points_initial|.
+The final grid is controlled by |scf__cosx_radial_points_final| and
+|scf__cosx_spherical_points_final|. The defaults for both grids aim to balance
+cost and accuracy.
+
+Screening thresholds over integrals, densities, and basis extents are set
+with the |scf__cosx_ints_tolerance|, |scf__cosx_density_tolerance|, and
+|scf__cosx_basis_tolerance| keywords, respectively. |scf__cosx_ints_tolerance|
+is the most consequential of the three thresholds in both cost and accuracy.
+This keyword determines screening of negligible one-electron integrals.
+|scf__cosx_density_tolerance| controls the threshold for significant
+shell pairs in the density matrix. Lastly, |scf__cosx_basis_tolerance| is
+a cutoff for the value of basis functions at grid points. This keyword is
+used to determine the radial extent of the each basis shell, and it is the
+COSX analogue to |scf__dft_basis_tolerance|.
+
+The |scf__cosx_incfock| keyword (defaults to ``true``) increases performance
+by constructing the Fock matrix from differences in the density matrix, which
+are more amenable to screening. Consider disabling this keyword if SCF energy
+convergence issues are observed, particularly when using diffuse basis functions.
+The |scf__cosx_overlap_fitting| keyword (defaults to ``true``) reduces numerical
+integration errors using the method described in [Izsak:2011:144105]_ and is
+always recommended.
+
+LinK Exchange
+~~~~~~~~~~~~~
+
+.. warning:: The LinK code is currently under development and should not be used.
+
+Large SCF calculations can benefit from specialized screening procedures that further reduce the scaling of the ERI contribution to the Fock matrix.
+LinK, the linear-scaling exchange method described in [Ochsenfeld:1998:1663]_, is available with the direct SCF algorithm (|globals__scf_type| set to ``DIRECT``).
+LinK achieves linear-scaling by exploiting shell pair sparsity in the density matrix and overlap sparsity between shell pairs.
+This method is most competitive when used with non-diffuse orbital basis sets, since orbital and density overlaps decay slower with diffuse functions.
+LinK is especially powerful when combined with density-matrix based ERI screening (set |globals__screening| to ``DENSITY``) and incremental Fock builds (set |scf__incfock| to ``TRUE``), which decrease the number of significant two-electron integrals to calculate.
+
+NOTE: Turning on LinK is currently only recommended for research and development purposes, and not for performance,
+since a fast J matrix build compatible to use with LinK has not been developed yet.
+
+To turn on and control the LinK algorithm, here are the list of options provided.
+
+  |scf__do_linK|: Defaults to false. If turned on, the K matrix will be built using the algorithm described in [Ochsenfeld:1998:1663]_.
+
+  |scf__linK_ints_tolerance|: The integral screening tolerance used for sparsity-prep in the LinK algorithm. Defaults to the |scf__ints_tolerance| option.
 
 .. index::
     single: SOSCF
@@ -699,7 +855,7 @@ follows:
     |scf__soscf_print|: option to print the microiterations or not
 
 
-.. _`stability_doc`:
+.. _`sec:scfstability_doc`:
 
 Stability Analysis
 ~~~~~~~~~~~~~~~~~~
@@ -814,7 +970,9 @@ Effective core potentials (ECPs)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 |PSIfour| supports the use of effective core potentials to describe the
-innermost electrons in heavy elements.  If a basis set is designed to use an
+innermost electrons in heavy elements.
+ECPs are only available if |PSIfour| is compiled with the :ref:`LibECPInt <cmake:ecpint>` library.
+If a basis set is designed to use an
 effective core potential, the ECP definition should be simply placed alongside
 the orbital basis set definition, *c.f.* :ref:`sec:basissets-ecps`.  All
 information related to the definition and number of core electrons will
@@ -822,9 +980,13 @@ automatically be detected and no further input is required to use the
 ECP-containing basis set.  See :srcsample:`scf-ecp` and :srcsample:`dfmp2-ecp`
 for examples of computations with ECP-containing basis sets.
 
-.. warning:: Analytic derivatives of ECPs are not yet available.  The HF and DFT derivatives are implemented in a semi-numerical scheme, where numerical ECP gradients are added to analytic SCF gradients.  Analytic gradients for (DF)MP2 are not yet available, but the standard numerical gradients will work correctly.  Fully analytic gradients will be implemented soon.
+.. warning:: Prior to May 2022, v1.6, Psi4 used a built-in ECP code. Analytic derivatives of ECPs were not available. The HF and DFT derivatives were implemented in a semi-numerical scheme, where numerical ECP gradients were added to analytic SCF gradients. For post-SCF methods, the entire gradient computation needed to be run as finite difference of energies.
+
+.. warning:: As of May 2022, v1.6, Psi4 uses the LibECPInt library, and analytic derivatives and Hessians of ECPs are available. Analytic derivatives of molecular systems including ECPs should be available whenever the method has analytic derivatives, but these have so far only been verified for HF and DFT.
 
 .. warning:: ECPs have not been tested with projected basis set guesses or with FI-SAPT calculations.  If you require this functionality, please contact the developers on GitHub and/or the `forum <http://forum.psicode.org>`_.
+
+.. _`sec:scfqmmm`:
 
 External potentials and QM/MM
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -834,19 +996,43 @@ computations, |PSIfour| can perform more rudimentary QM/MM procedures via the
 |scf__extern| keyword.  The following snippet, extracted from the
 :srcsample:`extern1` test case, demonstrates its use for a TIP3P external potential::
 
+    import numpy as np
+    external_potentials = [
+        [-0.834, np.array([1.649232019048,0.0,-2.356023604706]) / psi_bohr2angstroms],
+        [ 0.417, np.array([0.544757019107,0.0,-3.799961446760]) / psi_bohr2angstroms],
+        [ 0.417, np.array([0.544757019107,0.0,-0.912085762652]) / psi_bohr2angstroms]]
+
+    gradient('scf', external_potentials=external_potentials)
+
+The ``external_potentials`` array has three rows for three separate
+particles, and it is passed to the SCF code on the last line. The
+rows are composed of the atomic charge, x coordinate, y coordinate,
+and z coordinate in that order. The atomic charge and coordinates are
+specified in atomic units, [e] and [a0]. Add as many particle rows as
+needed to describe the full MM region.
+
+.. caution:: In |PSIfour| previous to Spring 2022 and v1.6, setting an
+   external potential like the above looked like ::
+
     Chrgfield = QMMM()
     Chrgfield.extern.addCharge(-0.834, 1.649232019048, 0.0, -2.356023604706)
     Chrgfield.extern.addCharge( 0.417, 0.544757019107, 0.0, -3.799961446760)
     Chrgfield.extern.addCharge( 0.417, 0.544757019107, 0.0, -0.912085762652)
     psi4.set_global_option_python('EXTERN', Chrgfield.extern)
 
-First a QMMM object is created, then three separate particles are added to this
-object before the SCF code is told about its existence on the last line.  The
-calls to ``addCharge`` take the atomic charge, x coordinate, y coordinate, and
-z coordinate in that order.  The atomic charge is specified in atomic units,
-and the coordinates always use the same units as the geometry specification in
-the regular QM region.  Additional MM molecules may be specified by adding
-extra calls to ``addCharge`` to describe the full MM region.
+    gradient('scf')
+
+   The main differences are that (1) the specification of
+   charge locations in the old way used the units of the active
+   molecule, whereas the new way always uses Bohr and (2) the
+   specification of the charge and locations in the old way used the
+   :py:class:`psi4.driver.QMMM` class directly and added one charge
+   per command, whereas the new way consolidates all into an array and
+   passes it by keyword argument to the calculation.
+
+   The successor to the :py:class:`psi4.driver.QMMM` class,
+   :py:class:`psi4.driver.QMMMbohr`, is operable, but it is discouraged
+   from being used directly.
 
 To run a computation in a constant dipole field, the |scf__perturb_h|,
 |scf__perturb_with| and |scf__perturb_dipole| keywords can be used.  As an
@@ -861,6 +1047,8 @@ Note that if any specified fields do not fall along a symmetry axis, the
 symmetry of the calculation should be reduced accordingly; if in doubt run the
 calculation in C1 symmetry.  For examples of SCF and MP2 calculations in an
 external field, see :srcsample:`scf7` and :srcsample:`dfmp2-grad5`.
+
+.. _`sec:scfdefault`:
 
 Convergence and Algorithm Defaults
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -910,7 +1098,7 @@ Convergence and Algorithm Defaults
    that use an alternate starting point, like MCSCF. SAPT computations, too,
    set tighter values.
 
-.. [#f2] This applies to properties computed through the :py:func:`~psi4.properties` function.
+.. [#f2] This applies to properties computed through the :py:func:`~psi4.driver.properties` function.
 
 .. [#f3] Post-HF methods that do not rely upon the usual 4-index AO integrals use a
    density-fitted SCF reference. That is, for DF-MP2 and SAPT, the default |globals__scf_type| is DF.
@@ -932,6 +1120,8 @@ Convergence and Algorithm Defaults
    |scf__e_convergence| and |scf__d_convergence| for SCF of HF or DFT, 11
    for |scf__e_convergence| and |scf__d_convergence| for SCF of post-HF,
    and 10 for E_CONVERGENCE for post-HF of post-HF.
+
+.. _`sec:scfrec`:
 
 Recommendations
 ~~~~~~~~~~~~~~~

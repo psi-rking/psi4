@@ -3,7 +3,7 @@
 .. #
 .. # Psi4: an open-source quantum chemistry software package
 .. #
-.. # Copyright (c) 2007-2021 The Psi4 Developers.
+.. # Copyright (c) 2007-2022 The Psi4 Developers.
 .. #
 .. # The copyrights for code used from other parties are included in
 .. # the corresponding files.
@@ -58,6 +58,39 @@ SAPT: Symmetry-Adapted Perturbation Theory
    orbital truncation to speed up the evaluation of energy terms
    wherever possible, according to literature recommendations.
    In early July 2016, some total SAPT energy psivars were renamed.
+
+.. caution:: February 7, 2020, a missing term in :math:`E^{(30)}_{ind}` was added, causing
+   possible discrepancies with prior versions of the code on the order of
+   0.01 kcal/mol. See https://github.com/psi4/psi4/issues/1677
+
+.. caution:: August 2021, the number of frozen core orbitals used in the dMP2 computations
+   is now standardized. Specifically, we now rigorously enforce that the number of core orbitals 
+   frozen in dimer computations is equal to the sum of frozen orbitals of each monomer. Prior to
+   this, a discrepency between these values was possible when one of the monomers was (exclusively) 
+   a charged alkali metal. 
+
+
+.. _`sec:saptfitA`:
+
+
+.. caution:: May 2022 c. v1.6, the default for |sapt__df_basis_elst|
+   changed from the value of |sapt__df_basis_sapt| (which itself
+   defaults to the RI of the orbital basis) to the JKFIT of the orbital
+   basis. This affects SAPT0 and sSAPT0 computed with the :ref:`SAPT
+   module<sec:sapt>` (the default code for ``energy("sapt0")`` that
+   can also compute higher-order SAPT). Electostatics, exchange,
+   and induction terms for SAPT0 and sSAPT0 accessed through
+   ``energy("sapt0")`` or ``energy("ssapt0")`` change; the dispersion
+   term does not change. The SAPT0 and sSAPT0 terms accessed as
+   subsidiary calculations of higher-order SAPT do not change; that is,
+   the :ref:`SAPT module<sec:sapt>` breaks the consistency of its SAPT0
+   results. The reasoning and reward behind this change is that the JKFIT
+   basis better describes the physics (see :ref:`fitting changes <sec:saptfitB>` ) and the
+   default SAPT0 results from the :ref:`SAPT module<sec:sapt>` are now
+   consistent with those from the :ref:`FISAPT module<sec:fisapt>` and
+   the sapt(dft) module. See :srcsample:`sapt-compare` for an example.
+   To reproduce former behavior, set |sapt__df_basis_elst| to the
+   orbital basis set's RI auxiliary basis.
 
 Symmetry-adapted perturbation theory (SAPT) provides a means of directly
 computing the noncovalent interaction between two molecules, that is, the
@@ -410,7 +443,7 @@ then instructs the program to read these integrals from disk instead of recomput
 them. For each SCF computation, we use ``psi4.IO.set_default_namespace`` to uniquely
 name scratch files. In the following SCF step, only file 97 is renamed using
 ``psi4.IO.change_file_namespace`` so that integrals can be read from it.
-For more information on stability analysis, see the :ref:`stability <stability_doc>`
+For more information on stability analysis, see the :ref:`stability <sec:scfstability_doc>`
 documentation.
 
 .. index:: SAPT; SAPT0
@@ -872,22 +905,25 @@ The scaling factor is reported at the top (here ``1.0072``) together with the
 label. Note that if Exch10 is less than :math:`10^{-5}`, the scaling factor is
 set to :math:`1.0`.
 
+
+.. _`sec:saptfitB`:
+
+
 .. caution:: To density fit the dispersion terms in SAPT, the RI auxiliary
    basis set (*e.g.*, aug-cc-pVDZ-RI) controlled through
    |sapt__df_basis_sapt| performs well. For Fock-type terms (*i.e.*,
    electrostatics, exchange, induction, and core Fock matrix elements in
-   exchange-dispersion), the density-fitting auxiliary basis in the
-   :ref:`SAPT module<sec:sapt>` (both SAPT0 and higher-order) is RI (more
-   efficient for the small basis sets at which SAPT0 performs best) while
-   the :ref:`FISAPT module<sec:fisapt>` uses the more appropriate JKFIT
-   (*e.g.*, aug-cc-pVDZ-JKFIT). For heavier elements (*i.e.*, second-row
-   and beyond), the RI auxiliary basis is unsound for this role
-   (insufficiently flexible). For SAPT0 in the :ref:`SAPT
-   module<sec:sapt>`, a workaround is to set |sapt__df_basis_elst| (which
-   controls Elst10 and Exch10 terms) to a JKFIT basis. For higher-order
-   methods in :ref:`SAPT module<sec:sapt>`, there is no workaround;
-   on-the-fly construction of an auxiliary basis through Cholesky
-   decomposition (not implemented) is the long-term solution.
+   exchange-dispersion), the JKFIT density-fitting auxiliary basis
+   (*e.g.*, aug-cc-pVDZ-JKFIT) is more appropriate. The :ref:`FISAPT
+   module<sec:fisapt>` has always used JKFIT in this role. The
+   :ref:`SAPT module<sec:sapt>` newly (see :ref:`fitting notes <sec:saptfitA>` ) uses
+   JKFIT for computations targeting SAPT0 and sSAPT0 methods. But the
+   :ref:`SAPT module<sec:sapt>` still uses the RI basis for higher-order
+   SAPT. For heavier elements (*i.e.*, second-row and beyond), the RI
+   auxiliary basis is unsound for this role (insufficiently flexible).
+   For higher-order methods in :ref:`SAPT module<sec:sapt>`, there is
+   no workaround; on-the-fly construction of an auxiliary basis through
+   Cholesky decomposition (not implemented) is the long-term solution.
 
 Spin-Flip SAPT
 ^^^^^^^^^^^^^^
@@ -907,12 +943,13 @@ following publications: [Patkowski:2018:164110]_
 
 .. _`sec:saptinf`:
 
-Second-Order Exchange Terms without Single-Exchange Approximation
+Higher-Order Exchange Terms without Single-Exchange Approximation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Recently, the SAPT second-order exchange terms have been derived without
-the :math:`S^{2}` approximation in the works [Schaffer:2012:1235]_ and
-[Schaffer:2013:2570]_. These new terms can be computed with the following
+Recently, several SAPT higher-order exchange terms have been derived without
+the :math:`S^{2}` approximation: :math:`E_{exch-ind}^{(20)}` [Schaffer:2012:1235]_, 
+:math:`E_{exch-disp}^{(20)}` [Schaffer:2013:2570]_, and :math:`E_{exch-ind}^{(30)}` 
+[Waldrop:2021:024103]_. The second-order terms can be computed with the following
 settings::
 
     set SAPT_DFT_FUNCTIONAL HF
@@ -920,12 +957,69 @@ settings::
     set SAPT_DFT_MP2_DISP_ALG fisapt 
     set DO_DISP_EXCH_SINF true       # calculate Exch-Disp20 (S^inf)
     energy('sapt(dft)')
-                                            
+                       
+and the third-order exchange-induction term is computed as follows::
+
+    set DO_IND30_EXCH_SINF true        # calculate Exch-Ind30 (S^inf) 
+    energy('sapt2+3')
+                       
 These calculations are performed with the atomic orbital and 
-density-fitting scheme of [J. M. Waldrop et al., to be published].
+density-fitting scheme described in the Supplementary Material to
+[Smith:2020:184108]_ for the second-order terms and in [Waldrop:2021:024103]_
+for the third-order exchange induction. The coupled (response) version of the
+exchange-induction corrections are also calculated, exactly for 
+:math:`E_{exch-ind,resp}^{(20)}` and by scaling the uncoupled term for
+:math:`E_{exch-ind,resp}^{(30)}`.
 
 S^inf Keywords
 ~~~~~~~~~~~~~~
 
 .. include:: autodir_options_c/sapt__do_ind_exch_sinf.rst
 .. include:: autodir_options_c/sapt__do_disp_exch_sinf.rst
+.. include:: autodir_options_c/sapt__do_ind30_exch_sinf.rst
+
+.. _`sec:saptd`:
+
+SAPT0-D
+~~~~~~~
+
+In SAPT0, the computation of :math:`E_{disp}^{(20)} + E_{exch-disp}^{(20)}` represents
+the computational bottleneck. One can avoid this bottleneck by replacing these
+dispersion terms with the empirical D3 corrections developed by Grimme.
+  
+:ref:`Grimme's dispersion corrections are discussed here. <sec:dftd3>`
+
+The corresponding method, termed SAPT0-D, thus relies on empirically fit parameters
+specific to SAPT0/jun-cc-pVDZ. While SAPT0-D can be used with any of the -D 
+variants using default parameters optimized for Hartee--Fock interaction energies, 
+we recommend using the refit parameters with Becke-Johnson damping, as described in
+[Schriber:2021:234107]_. Again, use of SAPT0-D with a basis set other than
+jun-cc-pVDZ is not tested and not guaranteed to give meaningful results without
+refitting the dispersion parameters. 
+A simple water dimer computation using SAPT0-D may look like::
+
+	molecule water_dimer {
+	     0 1
+	     O  -1.551007  -0.114520   0.000000
+	     H  -1.934259   0.762503   0.000000
+	     H  -0.599677   0.040712   0.000000
+	     --
+	     0 1
+	     O   1.350625   0.111469   0.000000
+	     H   1.680398  -0.373741  -0.758561
+	     H   1.680398  -0.373741   0.758561
+	
+	     units angstrom
+	     no_reorient
+	     symmetry c1
+	}
+	
+	set basis jun-cc-pvdz
+
+	energy('sapt0-d3mbj') # runs the recommended dispersion correction
+    energy('sapt0-d3') # tests an alternative damping scheme/parameterization
+
+Given the naturally pairwise-atomic nature of these empirical dispersion corrections,
+integration with existing FSAPT functionality is also available simply by calling
+`energy("fsapt0-d3mbj")`. See `FSAPT <fisapt>` documentation for more details on using FSAPT
+for functional group analyses.

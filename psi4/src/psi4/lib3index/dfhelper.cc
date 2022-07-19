@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2021 The Psi4 Developers.
+ * Copyright (c) 2007-2022 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -41,6 +41,7 @@
 #include <omp.h>
 #endif
 
+#include <memory>
 #include "psi4/psi4-dec.h"
 #include "psi4/liboptions/liboptions.h"
 #include "psi4/libfock/jk.h"
@@ -769,7 +770,7 @@ std::pair<size_t, size_t> DFHelper::Qshell_blocks_for_transform(const size_t mem
             tmpbs = 0;
         }
     }
-    // returns pair(largest buffer size, largest block size)
+
     return std::make_pair(largest, block_size);
 }
 std::tuple<size_t, size_t> DFHelper::Qshell_blocks_for_JK_build(std::vector<std::pair<size_t, size_t>>& b,
@@ -825,7 +826,7 @@ std::tuple<size_t, size_t> DFHelper::Qshell_blocks_for_JK_build(std::vector<std:
             count = total_AO_buffer = tmpbs = 0;
         }
     }
-    // returns tuple(largest AO buffer size, largest Q block size)
+
     return std::make_tuple(largest, block_size);
 }
 
@@ -1411,9 +1412,7 @@ double* DFHelper::metric_prep_core(double m_pow) {
     if (!on) {
         power = m_pow;
         SharedMatrix J = metrics_[1.0];
-        if (fabs(m_pow + 1.0) < 1e-13) {
-            J->general_invert();
-        } else if ( fabs(m_pow - 1.0) < 1e-13 ) {
+        if ( fabs(m_pow - 1.0) < 1e-13 ) {
             return J->pointer()[0];
         } else {
             J->power(power, condition_);
@@ -1435,7 +1434,6 @@ void DFHelper::prepare_metric() {
     filename.append(std::to_string(1.0));
     filename_maker(filename, naux_, naux_, 1);
     metric_keys_.push_back(std::make_pair(1.0, filename));
-
     // store
     std::string putf = std::get<0>(files_[filename]);
     put_tensor(putf, Mp, 0, naux_ - 1, 0, naux_ - 1, "wb");
@@ -1466,11 +1464,7 @@ std::string DFHelper::compute_metric(double m_pow) {
 
         // get and compute
         get_tensor_(std::get<0>(files_[filename]), metp, 0, naux_ - 1, 0, naux_ - 1);
-        if (std::fabs(m_pow + 1.0) < 1e-13) { 
-            metric->general_invert();
-        } else { 
-            metric->power(m_pow, condition_);
-        }
+        metric->power(m_pow, condition_);
 
         // make new file
         std::string name = "metric";
@@ -3016,6 +3010,9 @@ void DFHelper::compute_JK(std::vector<SharedMatrix> Cleft, std::vector<SharedMat
     // 1. we could predict the blocks used, write them to different files, and improve IO, otherwise
     // the strided disk reads for the AOs will result in a definite loss to DiskDFJK in the disk-bound realm
     // 2. we could allocate the buffers only once, instead of every time compute_JK() is called
+
+    // Each element of Qsteps specifies the endpoints of a batch of auxiliary shells.
+    // We'll treat all (PN|Q) for Q in this batch at once.
     std::vector<std::pair<size_t, size_t>> Qsteps;
     std::tuple<size_t, size_t> info = Qshell_blocks_for_JK_build(Qsteps, max_nocc, lr_symmetric);
     size_t tots = std::get<0>(info);
@@ -3045,7 +3042,6 @@ void DFHelper::compute_JK(std::vector<SharedMatrix> Cleft, std::vector<SharedMat
     size_t Ktmp_size = (!max_nocc ? totsb * 1 : totsb * max_nocc);
     Ktmp_size = std::max(Ktmp_size * nbf_, nthreads_ * naux_);  // max necessary
     Ktmp_size = std::max(Ktmp_size, nbf_ * nbf_); 
-    Ktmp_size = std::max(Ktmp_size, nthreads_ * naux_);
     T1 = std::make_unique<double[]>(Ktmp_size);
     double* T1p = T1.get();
 
@@ -3076,14 +3072,15 @@ void DFHelper::compute_JK(std::vector<SharedMatrix> Cleft, std::vector<SharedMat
         M1p = m1Ppq_.get();
     }
 
-    // transform in steps (blocks of Q)
-    for (size_t j = 0, bcount = 0; j < Qsteps.size(); j++) {
+    // Transform a single batch of integrals
+    size_t bcount = 0;
+    for (const auto& Qstep :Qsteps) {
         // Qshell step info
-        size_t start = std::get<0>(Qsteps[j]);
-        size_t stop = std::get<1>(Qsteps[j]);
-        size_t begin = Qshell_aggs_[start];
-        size_t end = Qshell_aggs_[stop + 1] - 1;
-        size_t block_size = end - begin + 1;
+        auto start = std::get<0>(Qstep);
+        auto stop = std::get<1>(Qstep);
+        auto begin = Qshell_aggs_[start];
+        auto end = Qshell_aggs_[stop + 1] - 1;
+        auto block_size = end - begin + 1;
 
         // get AO chunk according to directive
         timer_on("DFH: Grabbing AOs");
@@ -3183,7 +3180,7 @@ void DFHelper::fill(double* b, size_t count, double value) {
         b[i] = value;
     }
 }
-void DFHelper::compute_J(std::vector<SharedMatrix> D, std::vector<SharedMatrix> J, double* Mp, double* T1p, double* T2p,
+void DFHelper::compute_J(const std::vector<SharedMatrix> D, std::vector<SharedMatrix> J, double* Mp, double* T1p, double* T2p,
                          std::vector<std::vector<double>>& D_buffers, size_t bcount, size_t block_size) {
     for (size_t i = 0; i < J.size(); i++) {
         // grab orbital spaces
@@ -3191,6 +3188,7 @@ void DFHelper::compute_J(std::vector<SharedMatrix> D, std::vector<SharedMatrix> 
         double* Jp = J[i]->pointer()[0];
 
         // initialize Tmp (pQ)
+        // TODO: Make T1p a std::vector, so we don't need to know the length.
         fill(T1p, nthreads_ * naux_, 0.0);
 
 #pragma omp parallel for schedule(guided) num_threads(nthreads_)
@@ -3279,6 +3277,7 @@ void DFHelper::compute_J_combined(std::vector<SharedMatrix> D, std::vector<Share
         for (size_t k = 1; k < nthreads_; k++) {
             for (size_t l = 0; l < naux_; l++) { T1p[l] += T1p[ k * naux_ + l ]; }
         }
+
         //metric contraction
         C_DGEMV('N', naux_, naux_, 1.0, coul_metp, naux_, T1p, 1, 0.0, T2p, 1);
 
@@ -3384,7 +3383,7 @@ void DFHelper::compute_wK(std::vector<SharedMatrix> Cleft, std::vector<SharedMat
             first_transform_pQq(nocc, bcount, block_size, wMp, T2p, Crp, C_buffers);
 
             // compute wK
-            C_DGEMM('N', 'T', nbf_, nbf_, nocc * block_size, 1.0, T2p, nocc * block_size, T1p, nocc * block_size, 1.0,
+            C_DGEMM('N', 'T', nbf_, nbf_, nocc * block_size, 1.0, T1p, nocc * block_size, T2p, nocc * block_size, 1.0,
                     wKp, nbf_);
         }
         bcount += block_size;

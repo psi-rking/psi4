@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2021 The Psi4 Developers.
+ * Copyright (c) 2007-2022 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -719,12 +719,10 @@ void DCTSolver::build_tau_U() {
     bocc_d->copy(bocc_tau_);
     bvir_d->copy(bvir_tau_);
 
-    DIISManager diisManager(maxdiis_, "DCT DIIS Tau", DIISManager::LargestError, DIISManager::InCore);
+    DIISManager diisManager(maxdiis_, "DCT DIIS Tau", DIISManager::RemovalPolicy::LargestError, DIISManager::StoragePolicy::InCore);
     if ((nalpha_ + nbeta_) > 1) {
-        diisManager.set_error_vector_size(4, DIISEntry::Matrix, &aocc_tau_, DIISEntry::Matrix, &bocc_tau_,
-                                          DIISEntry::Matrix, &avir_tau_, DIISEntry::Matrix, &bvir_tau_);
-        diisManager.set_vector_size(4, DIISEntry::Matrix, &aocc_tau_, DIISEntry::Matrix, &bocc_tau_, DIISEntry::Matrix,
-                                    &avir_tau_, DIISEntry::Matrix, &bvir_tau_);
+        diisManager.set_error_vector_size(&aocc_tau_, &bocc_tau_, &avir_tau_, &bvir_tau_);
+        diisManager.set_vector_size(&aocc_tau_, &bocc_tau_, &avir_tau_, &bvir_tau_);
     }
 
     auto aocc_r = std::make_shared<Matrix>("Residual (Alpha Occupied)", nirrep_, naoccpi_, naoccpi_);
@@ -778,13 +776,13 @@ void DCTSolver::build_tau_U() {
 
         if (rms < diis_start_thresh_) {
             // Store the DIIS vectors
-            if (diisManager.add_entry(8, aocc_r.get(), bocc_r.get(), avir_r.get(), bvir_r.get(), &aocc_tau_, &bocc_tau_,
-                                      &avir_tau_, &bvir_tau_)) {
+            if (diisManager.add_entry(aocc_r.get(), bocc_r.get(), avir_r.get(), bvir_r.get(), &aocc_tau_, &bocc_tau_, &avir_tau_, &bvir_tau_)) {
                 diisString += "S";
             }
+
             if (diisManager.subspace_size() > mindiisvecs_) {
                 diisString += "/E";
-                diisManager.extrapolate(4, &aocc_tau_, &bocc_tau_, &avir_tau_, &bvir_tau_);
+                diisManager.extrapolate(&aocc_tau_, &bocc_tau_, &avir_tau_, &bvir_tau_);
             }
         }
 

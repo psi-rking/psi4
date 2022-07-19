@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2021 The Psi4 Developers.
+ * Copyright (c) 2007-2022 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -191,7 +191,6 @@ class PSI_API Wavefunction : public std::enable_shared_from_this<Wavefunction> {
     SharedMatrix Da_;
     /// Beta density matrix
     SharedMatrix Db_;
-
     /// Lagrangian matrix
     SharedMatrix Lagrangian_;
 
@@ -370,6 +369,9 @@ class PSI_API Wavefunction : public std::enable_shared_from_this<Wavefunction> {
     void set_reference_wavefunction(const std::shared_ptr<Wavefunction> wfn);
 
     /// Returns whether this wavefunction was obtained using density fitting or not
+    PSI_DEPRECATED(
+        "Using `Wavefunction.density_fitted` is deprecated for lack of use and will be removed in Psi4 1.7. "
+        "If you need an analogue of this, create a Wavefunction subclass.")
     bool density_fitted() const { return density_fitted_; }
 
     /// Returns the print level
@@ -427,7 +429,7 @@ class PSI_API Wavefunction : public std::enable_shared_from_this<Wavefunction> {
     int nirrep() const { return nirrep_; }
     /// Returns the energy
     PSI_DEPRECATED(
-        "Using `Wavefunction.reference_energy` instead of `Wavefunction.energy` is deprecated, and in 1.4 it will "
+        "Using `Wavefunction.reference_energy` instead of `Wavefunction.energy` is deprecated, and as soon as 1.4 it will "
         "stop working")
     double reference_energy() const { return energy_; }
     double energy() const { return energy_; }
@@ -462,7 +464,7 @@ class PSI_API Wavefunction : public std::enable_shared_from_this<Wavefunction> {
     /// Returns the alpha OPDM for the wavefunction
     const SharedMatrix Da() const;
     /// Returns the beta OPDM for the wavefunction
-    SharedMatrix Db() const;
+    const SharedMatrix Db() const;
 
     /**
      * Return a subset of the Ca matrix in a desired basis
@@ -588,12 +590,12 @@ class PSI_API Wavefunction : public std::enable_shared_from_this<Wavefunction> {
     /// Returns the SO basis Lagrangian
     PSI_DEPRECATED(
         "Using `Wavefunction.Lagrangian` instead of `Wavefunction.lagrangian` is deprecated,"
-        " and in 1.5 it will stop working")
+        " and as soon as 1.5 it will stop working")
     SharedMatrix Lagrangian() const { return lagrangian(); }
     /// Returns the SO basis Lagrangian (duplicated one)
     PSI_DEPRECATED(
         "Using `Wavefunction.X` instead of `Wavefunction.lagrangian` is deprecated,"
-        " and in 1.5 it will stop working")
+        " and as soon as 1.5 it will stop working")
     SharedMatrix X() const { return lagrangian(); }
 
     /// Returns the gradient
@@ -645,12 +647,12 @@ class PSI_API Wavefunction : public std::enable_shared_from_this<Wavefunction> {
 
     /// Returns the frequencies
     PSI_DEPRECATED(
-        "Using `Wavefunction.frequencies` c-side instead of `Wavefunction.frequencies` py-side is deprecated, and in "
+        "Using `Wavefunction.frequencies` c-side instead of `Wavefunction.frequencies` py-side is deprecated, and as soon as "
         "1.4 it will stop working")
     SharedVector frequencies() const;
 
     /// Set the frequencies for the wavefunction
-    PSI_DEPRECATED("Using `Wavefunction.set_frequencies` is deprecated, and in 1.4 it will stop working")
+    PSI_DEPRECATED("Using `Wavefunction.set_frequencies` is deprecated, and as soon as 1.4 it will stop working")
     void set_frequencies(std::shared_ptr<Vector> freqs);
 
     /// Set the wavefunction name (e.g. "RHF", "ROHF", "UHF", "CCEnergyWavefunction")
@@ -703,27 +705,27 @@ class PSI_API Wavefunction : public std::enable_shared_from_this<Wavefunction> {
     std::map<std::string, std::shared_ptr<ExternalPotential>> potential_variables();
 
     PSI_DEPRECATED(
-        "Using `Wavefunction.get_variable` instead of `Wavefunction.scalar_variable` is deprecated, and in 1.4 it will "
+        "Using `Wavefunction.get_variable` instead of `Wavefunction.scalar_variable` is deprecated, and as soon as 1.4 it will "
         "stop working")
     double get_variable(const std::string& key);
     PSI_DEPRECATED(
-        "Using `Wavefunction.set_variable` instead of `Wavefunction.set_scalar_variable` is deprecated, and in 1.4 it "
+        "Using `Wavefunction.set_variable` instead of `Wavefunction.set_scalar_variable` is deprecated, and as soon as 1.4 it "
         "will stop working")
     void set_variable(const std::string& key, double value);
     PSI_DEPRECATED(
-        "Using `Wavefunction.variables` instead of `Wavefunction.scalar_variables` is deprecated, and in 1.4 it will "
+        "Using `Wavefunction.variables` instead of `Wavefunction.scalar_variables` is deprecated, and as soon as 1.4 it will "
         "stop working")
     std::map<std::string, double> variables();
     PSI_DEPRECATED(
-        "Using `Wavefunction.get_array` instead of `Wavefunction.array_variable` is deprecated, and in 1.4 it will "
+        "Using `Wavefunction.get_array` instead of `Wavefunction.array_variable` is deprecated, and as soon as 1.4 it will "
         "stop working")
     SharedMatrix get_array(const std::string& key);
     PSI_DEPRECATED(
-        "Using `Wavefunction.set_array` instead of `Wavefunction.set_array_variable` is deprecated, and in 1.4 it will "
+        "Using `Wavefunction.set_array` instead of `Wavefunction.set_array_variable` is deprecated, and as soon as 1.4 it will "
         "stop working")
     void set_array(const std::string& key, SharedMatrix value);
     PSI_DEPRECATED(
-        "Using `Wavefunction.arrays` instead of `Wavefunction.array_variables` is deprecated, and in 1.4 it will stop "
+        "Using `Wavefunction.arrays` instead of `Wavefunction.array_variables` is deprecated, and as soon as 1.4 it will stop "
         "working")
     std::map<std::string, SharedMatrix> arrays();
 
@@ -732,6 +734,15 @@ class PSI_API Wavefunction : public std::enable_shared_from_this<Wavefunction> {
     /// Get PCM object
     std::shared_ptr<PCM> get_PCM() const;
     bool PCM_enabled() const { return PCM_enabled_; }
+
+    /// The below members are experimental and are designed to hold densities when the
+    /// "current density" is ambiguous, e.g., non-orbital optimized methods and multi-
+    /// stage methods. ~ JPM - Apr. '22
+    /// This is public because `ccdensity` doesn't subclass wfn like it should, so we need
+    /// SOME way to let it get/set.
+    /// Vector of density matrices
+    std::map<std::string, SharedMatrix> density_map_;
+
 };
 
 }  // namespace psi

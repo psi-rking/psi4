@@ -6,10 +6,10 @@ on:
       - master
       - gha-docs
 
-concurrency: 
+concurrency:
   group: latest-docs-group
   cancel-in-progress: true
-  
+
 jobs:
 
   docs:
@@ -76,9 +76,11 @@ jobs:
           -DCMAKE_CXX_FLAGS="-O0" \
           -DCMAKE_PREFIX_PATH="${CONDA_PREFIX}" \
           -DCMAKE_INSIST_FIND_PACKAGE_gau2grid=ON \
-          -DCMAKE_INSIST_FIND_PACKAGE_Libint=ON \
+          -DCMAKE_INSIST_FIND_PACKAGE_Libint2=ON \
           -DCMAKE_INSIST_FIND_PACKAGE_pybind11=ON \
           -DCMAKE_INSIST_FIND_PACKAGE_Libxc=ON \
+          -DENABLE_ecpint=ON \
+          -DCMAKE_INSIST_FIND_PACKAGE_ecpint=ON \
           -DCMAKE_INSIST_FIND_PACKAGE_qcelemental=ON \
           -DCMAKE_INSIST_FIND_PACKAGE_qcengine=ON \
           -DSPHINXMAN_STRICT=ON \

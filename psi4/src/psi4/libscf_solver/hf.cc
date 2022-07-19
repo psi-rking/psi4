@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2021 The Psi4 Developers.
+ * Copyright (c) 2007-2022 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -51,8 +51,6 @@
 #include "psi4/libfock/jk.h"
 #include "psi4/libfock/v.h"
 #include "psi4/libfunctional/superfunctional.h"
-#include "psi4/libdiis/diismanager.h"
-#include "psi4/libdiis/diisentry.h"
 
 #include "psi4/libpsi4util/libpsi4util.h"
 #include "psi4/libmints/basisset.h"
@@ -110,17 +108,15 @@ void HF::common_init() {
 
     scf_type_ = options_.get_str("SCF_TYPE");
 
-    H_.reset(factory_->create_matrix("One-electron Hamiltonian"));
-    X_.reset(factory_->create_matrix("X"));
+    H_ = factory_->create_matrix("One-electron Hamiltonian");
+    X_ = factory_->create_matrix("X");
 
-    nmo_ = 0;
+    // nmo_ and nmopi_ not determined at present.
     nso_ = 0;
     const Dimension& dimpi = factory_->colspi();
     for (int h = 0; h < factory_->nirrep(); h++) {
         nsopi_[h] = dimpi[h];
-        nmopi_[h] = nsopi_[h];  // For now, may change in S^-1/2
         nso_ += nsopi_[h];
-        nmo_ += nmopi_[h];  // For now, may change in S^-1/2
     }
 
     density_fitted_ = false;
@@ -184,7 +180,7 @@ void HF::common_init() {
 
     // Check that we have enough basis functions
     for (int h = 0; h < nirrep_; ++h) {
-        if (doccpi_[h] + soccpi_[h] > nmopi_[h]) {
+        if (doccpi_[h] + soccpi_[h] > nsopi_[h]) {
             throw PSIEXCEPTION("Not enough basis functions to satisfy requested occupancies");
         }
     }
@@ -308,7 +304,7 @@ int HF::soscf_update(double soscf_conv, int soscf_min_iter, int soscf_max_iter, 
 }
 
 void HF::form_V() { throw PSIEXCEPTION("Sorry, DFT functionals are not supported for this type of SCF wavefunction."); }
-void HF::form_C() { throw PSIEXCEPTION("Sorry, the base HF wavefunction cannot construct orbitals."); }
+void HF::form_C(double shift) { throw PSIEXCEPTION("Sorry, the base HF wavefunction cannot construct orbitals."); }
 void HF::form_D() { throw PSIEXCEPTION("Sorry, the base HF wavefunction cannot construct densities."); }
 
 std::vector<SharedMatrix> HF::onel_Hx(std::vector<SharedMatrix> x) {
@@ -396,8 +392,8 @@ void HF::finalize() {
     }
 
     // Clean up after DIIS
-    if (initialized_diis_manager_) diis_manager_->delete_diis_file();
-    diis_manager_.reset();
+    if (initialized_diis_manager_) diis_manager_.attr("delete_diis_file")();
+    diis_manager_ = py::none();
     initialized_diis_manager_ = false;
 
     // Figure out how many frozen virtual and frozen core per irrep
@@ -408,9 +404,6 @@ void HF::finalize() {
     // Sphalf_.reset();
     X_.reset();
     T_.reset();
-    diag_temp_.reset();
-    diag_F_temp_.reset();
-    diag_C_temp_.reset();
 }
 
 void HF::set_jk(std::shared_ptr<JK> jk) {
@@ -431,63 +424,72 @@ void HF::find_occupation() {
     if (MOM_performed_) {
         MOM();
     } else {
-        std::vector<std::pair<double, int> > pairs_a;
-        std::vector<std::pair<double, int> > pairs_b;
-        for (int h = 0; h < epsilon_a_->nirrep(); ++h) {
-            for (int i = 0; i < epsilon_a_->dimpi()[h]; ++i) {
-                pairs_a.push_back(std::make_pair(epsilon_a_->get(h, i), h));
+        if (!input_docc_ && !input_socc_) {
+            assert(nirrep_ == epsilon_a_->nirrep());
+            assert(nirrep_ == epsilon_b_->nirrep());
+
+            // The occupations are determined by the Aufbau
+            // principle. We first collect all the orbital energies and
+            // sort them in increasing order
+            std::vector<std::pair<double, int> > pairs_a;
+            for (int h = 0; h < nirrep_; ++h) {
+                for (int i = 0; i < epsilon_a_->dimpi()[h]; ++i) {
+                    pairs_a.push_back(std::make_pair(epsilon_a_->get(h, i), h));
+                }
             }
-        }
-        sort(pairs_a.begin(), pairs_a.end());
-
-        // Do we need to sort beta?
-        if (multiplicity_ == 1) {
-            pairs_b = pairs_a;
-
-        } else {
-            for (int h = 0; h < epsilon_b_->nirrep(); ++h) {
+            sort(pairs_a.begin(), pairs_a.end());
+            // Same for beta electrons
+            std::vector<std::pair<double, int> > pairs_b;
+            for (int h = 0; h < nirrep_; ++h) {
                 for (int i = 0; i < epsilon_b_->dimpi()[h]; ++i) {
                     pairs_b.push_back(std::make_pair(epsilon_b_->get(h, i), h));
                 }
             }
             sort(pairs_b.begin(), pairs_b.end());
-        }
 
-        if (!input_docc_ && !input_socc_) {
-            // Sanity check
+            // Sanity check: we must have at least one orbital per electron
             if ((size_t)std::max(nalpha_, nbeta_) > pairs_a.size())
                 throw PSIEXCEPTION("Not enough basis functions to satisfy requested occupancies");
 
-            // Alpha
-            memset(nalphapi_, 0, sizeof(int) * epsilon_a_->nirrep());
+            // Reset occupations
+            for (int h = 0; h < nirrep_; ++h) {
+                nalphapi_[h] = 0;
+                nbetapi_[h] = 0;
+            }
+            // Occupy the lowest nalpha orbitals
             for (int i = 0; i < nalpha_; ++i) nalphapi_[pairs_a[i].second]++;
-
-            // Beta
-            memset(nbetapi_, 0, sizeof(int) * epsilon_b_->nirrep());
+            // Occupy the lowest nbeta electrons
             for (int i = 0; i < nbeta_; ++i) nbetapi_[pairs_b[i].second]++;
         }
 
-        int old_socc[8];
-        int old_docc[8];
-        for (int h = 0; h < nirrep_; ++h) {
-            old_socc[h] = soccpi_[h];
-            old_docc[h] = doccpi_[h];
-        }
+        // Copies of socc and docc
+        Dimension old_socc = soccpi_;
+        Dimension old_docc = doccpi_;
 
         if (!input_docc_ && !input_socc_) {
+            int alphacount = 0;
+            int betacount = 0;
             for (int h = 0; h < nirrep_; ++h) {
                 soccpi_[h] = std::abs(nalphapi_[h] - nbetapi_[h]);
                 doccpi_[h] = std::min(nalphapi_[h], nbetapi_[h]);
+                alphacount += doccpi_[h] + soccpi_[h];
+                betacount += doccpi_[h];
+            }
+            if (alphacount != nalpha_) {
+                std::ostringstream oss;
+                oss << "Count " << alphacount << " alpha electrons, expected " << nalpha_ << ".\n";
+                oss << "This is a bug. Please file a report.";
+                throw PSIEXCEPTION(oss.str());
+            }
+            if (betacount != nbeta_) {
+                std::ostringstream oss;
+                oss << "Count " << betacount << " beta electrons, expected " << nbeta_ << ".\n";
+                oss << "This is a bug. Please file a report.";
+                throw PSIEXCEPTION(oss.str());
             }
         }
 
-        bool occ_changed = false;
-        for (int h = 0; h < nirrep_; ++h) {
-            if (old_socc[h] != soccpi_[h] || old_docc[h] != doccpi_[h]) {
-                occ_changed = true;
-                break;
-            }
-        }
+        bool occ_changed = (soccpi_ != old_socc) || (doccpi_ != old_docc);
 
         // If print > 2 (diagnostics), print always
         if ((print_ > 2 || (print_ && occ_changed)) && iteration_ > 0) {
@@ -569,20 +571,22 @@ void HF::form_H() {
             // Set up AO->SO transformation matrix (u)
             MintsHelper helper(basisset_, options_, 0);
             SharedMatrix aotoso = helper.petite_list(true)->aotoso();
-            int* col_offset = new int[nirrep_];
-            col_offset[0] = 0;
-            for (int h = 1; h < nirrep_; h++) col_offset[h] = col_offset[h - 1] + aotoso->coldim(h - 1);
+            Matrix u(nao, nso);
+            int offset = 0;
 
-            double** u = block_matrix(nao, nso);
-            for (int h = 0; h < nirrep_; h++)
-                for (int j = 0; j < aotoso->coldim(h); j++)
-                    for (int i = 0; i < nao; i++) u[i][j + col_offset[h]] = aotoso->get(h, i, j);
-            delete[] col_offset;
+            for (int h = 0; h < nirrep_; h++) {
+                // These loops should be vectorized for a (small) efficiency gain.
+                for (int j = 0; j < aotoso->coldim(h); j++) {
+                    for (int i = 0; i < nao; i++) {
+                        u.set(i, j + offset, aotoso->get(h, i, j));
+                    }
+                }
+                offset += aotoso->coldim(h);
+            }
 
-            double *phi_ao, *phi_so, **V_eff;
-            phi_ao = init_array(nao);
-            phi_so = init_array(nso);
-            V_eff = block_matrix(nso, nso);
+            Vector phi_ao(nao);
+            Vector phi_so(nso);
+            Matrix V_eff(nso, nso);
 
             if (dipole_field_type_ == embpot) {
                 FILE* input = fopen("EMBPOT", "r");
@@ -595,11 +599,11 @@ void HF::form_H() {
                     statusvalue = fscanf(input, "%lf %lf %lf %lf %lf", &x, &y, &z, &w, &v);
                     if (std::fabs(v) > max) max = std::fabs(v);
 
-                    basisset_->compute_phi(phi_ao, x, y, z);
+                    basisset_->compute_phi(phi_ao.pointer(), x, y, z);
                     // Transform phi_ao to SO basis
-                    C_DGEMV('t', nao, nso, 1.0, &(u[0][0]), nso, &(phi_ao[0]), 1, 0.0, &(phi_so[0]), 1);
+                    phi_so.gemv(true, 1.0, &u, &phi_ao, 0.0);
                     for (int i = 0; i < nso; i++)
-                        for (int j = 0; j < nso; j++) V_eff[i][j] += w * v * phi_so[i] * phi_so[j];
+                        for (int j = 0; j < nso; j++) V_eff.add(i, j, w * v * phi_so[i] * phi_so[j]);
                 }  // npoints
 
                 outfile->Printf("  Max. embpot value = %20.10f\n", max);
@@ -607,7 +611,7 @@ void HF::form_H() {
 
             }  // embpot
             else if (dipole_field_type_ == dx) {
-                dx_read(V_eff, phi_ao, phi_so, nao, nso, u);
+                dx_read(V_eff.pointer(), phi_ao.pointer(), phi_so.pointer(), nao, nso, u.pointer());
 
             }  // dx file
             else if (dipole_field_type_ == sphere) {
@@ -636,13 +640,13 @@ void HF::form_H() {
 
                             double jacobian = weight * r * r * sin(theta);
 
-                            basisset_->compute_phi(phi_ao, x, y, z);
+                            basisset_->compute_phi(phi_ao.pointer(), x, y, z);
 
-                            C_DGEMV('t', nao, nso, 1.0, &(u[0][0]), nso, &(phi_ao[0]), 1, 0.0, &(phi_so[0]), 1);
+                            phi_so.gemv(true, 1.0, &u, &phi_ao, 0.0);
 
                             for (int i = 0; i < nso; i++)
                                 for (int j = 0; j < nso; j++)
-                                    V_eff[i][j] += jacobian * (-1.0e6) * phi_so[i] * phi_so[j];
+                                    V_eff.add(i, j, jacobian * (-1.0e6) * phi_so[i] * phi_so[j]);
                         }
                     }
                 }
@@ -650,19 +654,14 @@ void HF::form_H() {
 
             outfile->Printf("  Perturbing H by %f %f %f V_eff.\n", dipole_field_strength_[0], dipole_field_strength_[1],
                             dipole_field_strength_[2]);
-            if (options_.get_int("PRINT") > 3) mat_print(V_eff, nso, nso, "outfile");
+            if (options_.get_int("PRINT") > 3) V_eff.print_out();
 
             if (dipole_field_type_ == dx) {
-                for (int i = 0; i < nso; i++)
-                    for (int j = 0; j < nso; j++) V_->set(i, j, V_eff[i][j]);  // ignore nuclear potential
+                V_->copy(V_eff);
             } else {
-                for (int i = 0; i < nso; i++)
-                    for (int j = 0; j < nso; j++) V_->set(i, j, (V_eff[i][j] + V_->get(i, j)));
+                V_->add(V_eff);
             }
 
-            free(phi_ao);
-            free(phi_so);
-            free_block(V_eff);
         }  // embpot or sphere
     }      // end perturb_h_
 
@@ -762,11 +761,6 @@ void HF::form_Shalf() {
         // Extra matrix dimension changes for specific derived classes
         prepare_canonical_orthogonalization();
 
-        // Temporary variables needed by diagonalize_F
-        diag_temp_ = std::make_shared<Matrix>(nirrep_, nmopi_, nsopi_);
-        diag_F_temp_ = std::make_shared<Matrix>(nirrep_, nmopi_, nmopi_);
-        diag_C_temp_ = std::make_shared<Matrix>(nirrep_, nmopi_, nmopi_);
-
         if (print_ > 3) {
             S_->print("outfile");
             X_->print("outfile");
@@ -802,11 +796,6 @@ void HF::form_Shalf() {
 
     // Extra matrix dimension changes for specific derived classes
     prepare_canonical_orthogonalization();
-
-    // Temporary variables needed by diagonalize_F
-    diag_temp_ = std::make_shared<Matrix>(nirrep_, nmopi_, nsopi_);
-    diag_F_temp_ = std::make_shared<Matrix>(nirrep_, nmopi_, nmopi_);
-    diag_C_temp_ = std::make_shared<Matrix>(nirrep_, nmopi_, nmopi_);
 
     if (print_ > 3) {
         S_->print("outfile");
@@ -1133,7 +1122,7 @@ void HF::guess() {
 
     } else if (guess_type == "GWH") {
         // Generalized Wolfsberg Helmholtz (Sounds cool, easy to code)
-        if (print_) outfile->Printf("  SCF Guess: Generalized Wolfsberg-Helmholtz.\n\n");
+        if (print_) outfile->Printf("  SCF Guess: Generalized Wolfsberg-Helmholtz applied to core Hamiltonian.\n\n");
 
         Fa_->zero();  // Try Fa_{mn} = S_{mn} (H_{mm} + H_{nn})/2
         int h, i, j;
@@ -1305,14 +1294,14 @@ void HF::diagonalize_F(const SharedMatrix& Fm, SharedMatrix& Cm, std::shared_ptr
 #endif
 
     // Form F' = X'FX for canonical orthogonalization
-    diag_temp_->gemm(true, false, 1.0, X_, Fm, 0.0);
-    diag_F_temp_->gemm(false, false, 1.0, diag_temp_, X_, 0.0);
+    auto diag_F_temp = linalg::triplet(X_, Fm, X_, true, false, false);
 
     // Form C' = eig(F')
-    diag_F_temp_->diagonalize(diag_C_temp_, epsm);
+    auto diag_C_temp = std::make_shared<Matrix>(nirrep_, nmopi_, nmopi_);
+    diag_F_temp->diagonalize(diag_C_temp, epsm);
 
     // Form C = XC'
-    Cm->gemm(false, false, 1.0, X_, diag_C_temp_, 0.0);
+    Cm->gemm(false, false, 1.0, X_, diag_C_temp, 0.0);
 }
 
 void HF::reset_occupation() {
@@ -1374,26 +1363,15 @@ SharedMatrix HF::form_Fia(SharedMatrix Fso, SharedMatrix Cso, int* noccpi) {
     return Fia;
 }
 SharedMatrix HF::form_FDSmSDF(SharedMatrix Fso, SharedMatrix Dso) {
-    auto FDSmSDF = std::make_shared<Matrix>("FDS-SDF", nirrep_, nsopi_, nsopi_);
-    auto DS = std::make_shared<Matrix>("DS", nirrep_, nsopi_, nsopi_);
-
-    DS->gemm(false, false, 1.0, Dso, S_, 0.0);
-    FDSmSDF->gemm(false, false, 1.0, Fso, DS, 0.0);
-
-    SharedMatrix SDF(FDSmSDF->transpose());
+    auto FDSmSDF = linalg::triplet(Fso, Dso, S_, false, false, false);
+    auto SDF = FDSmSDF->transpose();
     FDSmSDF->subtract(SDF);
 
-    DS.reset();
     SDF.reset();
 
-    auto XP = std::make_shared<Matrix>("X'(FDS - SDF)", nirrep_, nmopi_, nsopi_);
-    auto XPX = std::make_shared<Matrix>("X'(FDS - SDF)X", nirrep_, nmopi_, nmopi_);
-    XP->gemm(true, false, 1.0, X_, FDSmSDF, 0.0);
-    XPX->gemm(false, false, 1.0, XP, X_, 0.0);
+    FDSmSDF->transform(X_);
 
-    // XPX->print();
-
-    return XPX;
+    return FDSmSDF;
 }
 
 void HF::print_stability_analysis(std::vector<std::pair<double, int> >& vec) {

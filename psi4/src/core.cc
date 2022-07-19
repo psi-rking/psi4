@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2021 The Psi4 Developers.
+ * Copyright (c) 2007-2022 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -137,7 +137,7 @@ void handleBrianOption(bool value) {
 void export_benchmarks(py::module&);
 void export_blas_lapack(py::module&);
 void export_cubeprop(py::module&);
-void export_diis(py::module&);
+void export_dpd(py::module&);
 void export_fock(py::module&);
 void export_functional(py::module&);
 void export_mints(py::module&);
@@ -180,6 +180,9 @@ SharedWavefunction detci(SharedWavefunction, Options&);
 }
 namespace dfmp2 {
 SharedWavefunction dfmp2(SharedWavefunction, Options&);
+}
+namespace dlpno {
+SharedWavefunction dlpno(SharedWavefunction, Options&);
 }
 namespace dfoccwave {
 SharedWavefunction dfoccwave(SharedWavefunction, Options&);
@@ -245,7 +248,7 @@ namespace cclambda {
 PsiReturnType cclambda(SharedWavefunction, Options&);
 }
 namespace ccdensity {
-PsiReturnType ccdensity(SharedWavefunction, Options&);
+PsiReturnType ccdensity(std::shared_ptr<ccenergy::CCEnergyWavefunction>, Options&);
 }
 namespace ccresponse {
 PsiReturnType ccresponse(SharedWavefunction, Options&);
@@ -253,7 +256,7 @@ void scatter(std::shared_ptr<Molecule> molecule, Options&, double step, std::vec
              std::vector<SharedMatrix> rot, std::vector<SharedMatrix> quad);
 }  // namespace ccresponse
 namespace cceom {
-PsiReturnType cceom(SharedWavefunction, Options&);
+PsiReturnType cceom(std::shared_ptr<ccenergy::CCEnergyWavefunction>, Options&);
 }
 
 extern int read_options(const std::string& name, Options& options, bool suppress_printing = false);
@@ -261,7 +264,7 @@ extern int read_options(const std::string& name, Options& options, bool suppress
 
 std::string to_upper(const std::string& key) {
     std::string nonconst_key = key;
-    std::transform(nonconst_key.begin(), nonconst_key.end(), nonconst_key.begin(), ::toupper);
+    to_upper(nonconst_key);
     return nonconst_key;
 }
 
@@ -367,6 +370,11 @@ SharedWavefunction py_psi_dfmp2(SharedWavefunction ref_wfn) {
     return dfmp2::dfmp2(ref_wfn, Process::environment.options);
 }
 
+SharedWavefunction py_psi_dlpno(SharedWavefunction ref_wfn) {
+    py_psi_prepare_options_for_module("DLPNO");
+    return dlpno::dlpno(ref_wfn, Process::environment.options);
+}
+
 double py_psi_sapt(SharedWavefunction Dimer, SharedWavefunction MonomerA, SharedWavefunction MonomerB) {
     py_psi_prepare_options_for_module("SAPT");
     if (sapt::sapt(Dimer, MonomerA, MonomerB, Process::environment.options) == Success) {
@@ -443,7 +451,7 @@ SharedWavefunction py_psi_cclambda(SharedWavefunction ref_wfn) {
     return cclambda;
 }
 
-double py_psi_ccdensity(SharedWavefunction ref_wfn) {
+double py_psi_ccdensity(std::shared_ptr<ccenergy::CCEnergyWavefunction> ref_wfn) {
     py_psi_prepare_options_for_module("CCDENSITY");
     ccdensity::ccdensity(ref_wfn, Process::environment.options);
     return 0.0;
@@ -500,7 +508,7 @@ void py_psi_scatter(std::shared_ptr<Molecule> molecule, double step, py::list di
                         dip_quad_polar_tensors);
 }
 
-double py_psi_cceom(SharedWavefunction ref_wfn) {
+double py_psi_cceom(std::shared_ptr<ccenergy::CCEnergyWavefunction> ref_wfn) {
     py_psi_prepare_options_for_module("CCEOM");
     if (cceom::cceom(ref_wfn, Process::environment.options) == Success) {
         return Process::environment.globals["CURRENT ENERGY"];
@@ -560,6 +568,9 @@ void throw_deprecation_errors(std::string const& key, std::string const& module 
             "Rename keyword " + key +
                 ". All instances of 'dcft' should be replaced with 'dct'. The method was renamed in v1.4.",
             __FILE__, __LINE__);
+    }
+    if (module == "SCF" && key == "DIIS_MIN_VECS") {
+        py_psi_print_out("WARNING!\n\tRemove keyword DIIS_MIN_VECS! This keyword does nothing. Using it will raise an error in v1.7.\n");
     }
 }
 
@@ -1003,10 +1014,10 @@ void py_psi_set_n_threads(size_t nthread, bool quiet) {
 int py_psi_get_n_threads() { return Process::environment.get_n_threads(); }
 
 PSI_DEPRECATED("Using core.legacy_wavefunction rather than setting return_wfn=True for a computation is deprecated, "
-        "and in 1.5, it will stop working.")
+        "and as soon as 1.5, it will stop working.")
 std::shared_ptr<Wavefunction> py_psi_legacy_wavefunction() { return Process::environment.legacy_wavefunction(); }
 PSI_DEPRECATED("Using core.set_legacy_wavefunction rather than passing a wavefunction into a computation is deprecated, "
-        "and in 1.5, it will stop working.")
+        "and as soon as 1.5, it will stop working.")
 void py_psi_set_legacy_wavefunction(SharedWavefunction wfn) { Process::environment.set_legacy_wavefunction(wfn); }
 
 void py_psi_print_variable_map() {
@@ -1157,7 +1168,6 @@ PYBIND11_MODULE(core, core) {
 
     // Define library classes
     export_psio(core);
-    export_diis(core);
     export_mints(core);
     export_misc(core);
     export_fock(core);
@@ -1165,6 +1175,7 @@ PYBIND11_MODULE(core, core) {
     export_trans(core);
     export_wavefunction(core);
     export_options(core);
+    export_dpd(core);
 
     // Plugins
     export_plugins(core);
@@ -1199,7 +1210,7 @@ PYBIND11_MODULE(core, core) {
         "Assigns the global gradient to the values in the (nat, 3) Matrix argument. FOR INTERNAL OPTKING USE ONLY.");
     core.def("get_atomic_point_charges", []() { PyErr_SetString(PyExc_AttributeError, "psi4.core.get_atomic_point_charges removed since hasn't been working as intended. Use Wavefunction.get_atomic_point_charges() instead."); }, ".. deprecated:: 1.4");
     core.def("set_memory_bytes", py_psi_set_memory, "memory"_a, "quiet"_a = false,
-             "Sets the memory available to Psi (in bytes); prefer :func:`psi4.set_memory`.");
+             "Sets the memory available to Psi (in bytes); prefer :func:`psi4.driver.set_memory`.");
     core.def("get_memory", py_psi_get_memory, "Returns the amount of memory available to Psi (in bytes).");
 
     core.def("set_datadir", [](const std::string& pdd) { Process::environment.set_datadir(pdd); }, "psidatadir"_a,
@@ -1297,17 +1308,17 @@ PYBIND11_MODULE(core, core) {
              [](const std::string& key) { return bool(Process::environment.arrays.count(to_upper(key))); },
              "key"_a, "Is the Matrix QCVariable *key* (case-insensitive) set? Prefer :func:`~psi4.core.has_variable`");
     core.def("scalar_variable", [](const std::string& key) { return Process::environment.globals[to_upper(key)]; },
-             "key"_a, "Returns the double QCVariable *key* (case-insensitive); prefer :func:`~psi4.variable`");
+             "key"_a, "Returns the double QCVariable *key* (case-insensitive); prefer :func:`~psi4.core.variable`");
     core.def("array_variable",
              [](const std::string& key) { return Process::environment.arrays[to_upper(key)]->clone(); },
-             "key"_a, "Returns copy of the Matrix QCVariable *key* (case-insensitive); prefer :func:`~psi4.variable`");
+             "key"_a, "Returns copy of the Matrix QCVariable *key* (case-insensitive); prefer :func:`~psi4.core.variable`");
     core.def("set_scalar_variable",
              [](const std::string& key, double value) { Process::environment.globals[to_upper(key)] = value; },
-             "key"_a, "value"_a, "Sets the double QCVariable *key* (case-insensitive); prefer :func:`~psi4.set_variable`");
+             "key"_a, "value"_a, "Sets the double QCVariable *key* (case-insensitive); prefer :func:`~psi4.core.set_variable`");
     core.def(
         "set_array_variable",
         [](const std::string& key, SharedMatrix value) { Process::environment.arrays[to_upper(key)] = value->clone(); },
-        "key"_a, "value"_a, "Sets the requested (case-insensitive) Matrix QCVariable; prefer :func:`~psi4.set_variable`");
+        "key"_a, "value"_a, "Sets the requested (case-insensitive) Matrix QCVariable; prefer :func:`~psi4.core.set_variable`");
     core.def("del_scalar_variable", [](const std::string key) { Process::environment.globals.erase(to_upper(key)); },
              "key"_a, "Removes the double QCVariable *key* (case-insensitive); prefer :func:`~psi4.core.del_variable`");
     core.def("del_array_variable", [](const std::string key) { Process::environment.arrays.erase(to_upper(key)); },
@@ -1335,12 +1346,12 @@ PYBIND11_MODULE(core, core) {
              "Redirects output to ``/dev/null``. "
              "To switch back to regular output mode, use :func:`~psi4.core.reopen_outfile()`. "
              "Doesn't work with Windows.");
-
     // modules
     core.def("scfgrad", py_psi_scfgrad, "ref_wfn"_a, "Run scfgrad, which is a specialized DF-SCF gradient program.");
     core.def("scfhess", py_psi_scfhess, "ref_wfn"_a, "Run scfhess, which is a specialized DF-SCF hessian program.");
     core.def("dct", py_psi_dct, "ref_wfn"_a, "Runs the density cumulant (functional) theory code.");
     core.def("dfmp2", py_psi_dfmp2, "ref_wfn"_a, "Runs the DF-MP2 code.");
+    core.def("dlpno", py_psi_dlpno, "Runs the DLPNO codes.");
     core.def("mcscf", py_psi_mcscf, "Runs the MCSCF code, (N.B. restricted to certain active spaces).");
     core.def("mrcc_generate_input", py_psi_mrcc_generate_input, "Generates an input for Kallay's MRCC code.");
     core.def("mrcc_load_densities", py_psi_mrcc_load_densities,

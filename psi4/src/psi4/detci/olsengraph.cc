@@ -3,7 +3,7 @@
  *
  * Psi4: an open-source quantum chemistry software package
  *
- * Copyright (c) 2007-2021 The Psi4 Developers.
+ * Copyright (c) 2007-2022 The Psi4 Developers.
  *
  * The copyrights for code used from other parties are included in
  * the corresponding files.
@@ -821,9 +821,9 @@ void print_ci_space(struct stringwr *strlist, int num_strings, int nirreps, int 
             outfile->Printf("   Links:\n");
             for (strsym = 0; strsym < strtypes; strsym++) {
                 for (j = 0; j < strlist->cnt[strsym]; j++) {
-                    outfile->Printf("   %3d [%3d] %c (%2d %3d)   %lu\n", strlist->ij[strsym][j], strlist->oij[strsym][j],
+                    outfile->Printf("   %3d [%3d] %c (%2d %3d)   %d\n", strlist->ij[strsym][j], strlist->oij[strsym][j],
                                     (strlist->sgn[strsym][j] == 1) ? '+' : '-', strsym, strlist->ridx[strsym][j],
-                                    (int)strlist->sgn[strsym][j]);
+                                    static_cast<int>(strlist->sgn[strsym][j]));
                 }
             } /* end loop over strsym */
         }

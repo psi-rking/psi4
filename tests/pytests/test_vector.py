@@ -6,7 +6,7 @@ import pytest
 
 from psi4.core import Dimension, Vector
 
-pytestmark = pytest.mark.quick
+pytestmark = [pytest.mark.psi, pytest.mark.api, pytest.mark.quick]
 
 
 def check_dense_vec(v, exp_d, exp_name=None):
@@ -50,3 +50,9 @@ for group_size in [1, 2, 4, 8]:
 def test_constructors_w_symmetry(name, dim):
     v = Vector(name, dim)
     check_block_vec(v, dim.n(), dim, name)
+
+def test_clone():
+    dim = Dimension([1, 2, 3])
+    vec = Vector(dim)
+    copy = vec.clone()
+    assert copy.dimpi() == dim

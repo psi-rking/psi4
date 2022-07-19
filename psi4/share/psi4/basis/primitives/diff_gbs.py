@@ -5,7 +5,7 @@
 #
 # Psi4: an open-source quantum chemistry software package
 #
-# Copyright (c) 2007-2021 The Psi4 Developers.
+# Copyright (c) 2007-2022 The Psi4 Developers.
 #
 # The copyrights for code used from other parties are included in
 # the corresponding files.
@@ -111,7 +111,8 @@ for el in elements:
             rdict = {bname: ''.join(refcontents)}
             bs, msg, ecp = qcdb.BasisSet.construct(parser, mol, 'BASIS', None, bdict, False)
             rbs, rmsg, recp = qcdb.BasisSet.construct(parser, mol, 'BASIS', None, rdict, False)
-            if bs == rbs:
+            #if bs.allclose(rbs, verbose=2):   # see changed coeff/exp
+            if bs.allclose(rbs):  # one line per BS
                 print('{:3}'.format(el.lower()), end='')
             else:
                 print(bcolors.WARNING + '{:3}'.format(el.upper()) + bcolors.ENDC, end='')

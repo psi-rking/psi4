@@ -1,3 +1,4 @@
+import re
 import pytest
 from qcengine.programs.tests.standard_suite_contracts import (
     contractual_hf,
@@ -13,16 +14,20 @@ from qcengine.programs.tests.standard_suite_contracts import (
     query_has_qcvar,
     query_qcvar,
 )
-from qcengine.programs.tests.standard_suite_ref import answer_hash, std_suite
+from qcengine.programs.tests.standard_suite_ref import answer_hash
+from standard_suite_ref_local import std_suite
 
 import psi4
 
-from .utils import *
+from utils import *
 
 
 def runner_asserter(inp, subject, method, basis, tnm):
 
-    qc_module_in = "-".join(["psi4", inp["keywords"].get("qc_module", "")]).strip("-")  # returns "psi4"|"psi4-<module>"
+    qc_module_in = "-".join(["psi4", inp["keywords"].get("qc_module", "")]).strip("-")  # returns "psi4"|"psi4-<module>"  # input-specified routing
+    qc_module_xptd = (
+        ("psi4-" + inp["xptd"]["qc_module"]) if inp.get("xptd", {}).get("qc_module", None) else None
+    )  # expected routing
     driver = inp["driver"]
     reference = inp["keywords"]["reference"]
     fcae = {"true": "fc", "false": "ae"}[inp["keywords"]["freeze_core"]]
@@ -59,6 +64,8 @@ def runner_asserter(inp, subject, method, basis, tnm):
     scf_type = natural_values[scf_type]
 
     atol = 1.0e-6
+    if driver == "hessian":
+        atol = 1.0e-5  # todo implement more elaborate e/g/h atol like at qcdb & qcng: https://github.com/qcdb/qcdb/blob/master/qcdb/tests/standard_suite_runner.py#L144-L152
     chash = answer_hash(
         system=subject.name(), basis=basis, fcae=fcae, scf_type=scf_type, reference=reference, corl_type=corl_type,
     )
@@ -72,7 +79,7 @@ def runner_asserter(inp, subject, method, basis, tnm):
 
     # <<<  Prepare Calculation and Call API  >>>
 
-    driver_call = {"energy": psi4.energy, "gradient": psi4.gradient}
+    driver_call = {"energy": psi4.energy, "gradient": psi4.gradient, "hessian": psi4.hessian}
 
     psi4.set_options(
         {
@@ -85,17 +92,19 @@ def runner_asserter(inp, subject, method, basis, tnm):
 
             # runtime conv crit
             "points": 5,
+            "fd_project": False,
         }
     )
     extra_kwargs = inp["keywords"].pop("function_kwargs", {})
     psi4.set_options(inp["keywords"])
 
     if "error" in inp:
-        errtype, errmsg = inp["error"]
+        errtype, errmatch, reason = inp["error"]
         with pytest.raises(errtype) as e:
             driver_call[driver](inp["call"], molecule=subject, **extra_kwargs)
 
-        assert errmsg in str(e.value), f"({errmsg}) not in ({e.value})"
+        assert re.search(errmatch, str(e.value)), f"Not found: {errtype} '{errmatch}' in {e.value}"
+        # _recorder(qcprog, qc_module_in, driver, method, reference, fcae, scf_type, corl_type, "error", "nyi: " + reason)
         return
 
     ret, wfn = driver_call[driver](inp["call"], molecule=subject, return_wfn=True, **extra_kwargs)
@@ -104,13 +113,15 @@ def runner_asserter(inp, subject, method, basis, tnm):
     # <<<  Comparison Tests  >>>
 
     if qc_module_in != "psi4":
-        assert qc_module_out == qc_module_in, f"QC_MODULE used ({qc_module_in}) != requested ({qc_module_out})"
+        assert qc_module_out == qc_module_in, f"QC_MODULE used ({qc_module_out}) != requested ({qc_module_in})"
+    if qc_module_xptd:
+        assert qc_module_out == qc_module_xptd, f"QC_MODULE used ({qc_module_out}) != expected ({qc_module_xptd})"
 
     ref_block = std_suite[chash]
 
     # qcvars
     contractual_args = [
-        qc_module_in,
+        qc_module_out,
         driver,
         reference,
         method,
@@ -158,12 +169,12 @@ def runner_asserter(inp, subject, method, basis, tnm):
             _asserter(asserter_args, contractual_args, contractual_olccd)
 
     if "wrong" in inp:
-        errmsg, reason = inp["wrong"]
+        errmatch, reason = inp["wrong"]
         with pytest.raises(AssertionError) as e:
             qcvar_assertions()
 
-        # print("WRONG", errmsg, reason, str(e.value), "ENDW")
-        assert errmsg in str(e.value)
+        assert errmatch in str(e.value), f"Not found: AssertionError '{errmatch}' for '{reason}' in {e.value}"
+        # _recorder(qcprog, qc_module_out, driver, method, reference, fcae, scf_type, corl_type, "wrong", reason + f" First wrong at `{errmatch}`.")
         pytest.xfail(reason)
 
     qcvar_assertions()
@@ -190,6 +201,15 @@ def runner_asserter(inp, subject, method, basis, tnm):
             ref_block[f"{method.upper()} TOTAL GRADIENT"], wfn.gradient().np, tnm + " grad wfn", atol=atol
         )
         assert compare_values(ref_block[f"{method.upper()} TOTAL GRADIENT"], ret.np, tnm + " grad return", atol=atol)
+
+    elif driver == "hessian":
+        tf, errmsg = compare_values(ref_block[f"{method.upper()} TOTAL HESSIAN"], wfn.hessian().np, tnm + " hess wfn", atol=atol, return_message=True, quiet=True)
+        assert compare_values(ref_block[f"{method.upper()} TOTAL HESSIAN"], wfn.hessian().np, tnm + " hess wfn", atol=atol), errmsg
+        assert compare_values(ref_block[f"{method.upper()} TOTAL HESSIAN"], wfn.hessian().np, tnm + " hess wfn", atol=atol)
+        assert compare_values(
+            ref_block[f"{method.upper()} TOTAL GRADIENT"], wfn.gradient().np, tnm + " grad wfn", atol=atol
+        )
+        assert compare_values(ref_block[f"{method.upper()} TOTAL HESSIAN"], ret.np, tnm + " hess return", atol=atol)
 
     # generics
     # yapf: disable

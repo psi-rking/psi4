@@ -3,7 +3,7 @@
 #
 # Psi4: an open-source quantum chemistry software package
 #
-# Copyright (c) 2007-2021 The Psi4 Developers.
+# Copyright (c) 2007-2022 The Psi4 Developers.
 #
 # The copyrights for code used from other parties are included in
 # the corresponding files.
@@ -110,6 +110,7 @@ funcs.append({"name": "B3LYPs"         , "xc_functionals": {"HYB_GGA_XC_B3LYPs" 
 funcs.append({"name": "wB97"           , "xc_functionals": {"HYB_GGA_XC_WB97"           : {}}})
 funcs.append({"name": "wB97X"          , "xc_functionals": {"HYB_GGA_XC_WB97X"          : {}}})
 funcs.append({"name": "wB97X-D"        , "xc_functionals": {"HYB_GGA_XC_WB97X_D"        : {}}, "dispersion": {"type": "chg", "params": {"s6": 1.0}}})
+funcs.append({"name": "wB97X-D3"       , "xc_functionals": {"HYB_GGA_XC_WB97X_D3"       : {}}, "dispersion": {"type": "d3zero", "params": {'s6': 1.0,'s8':1.0,'sr6': 1.281,'sr8': 1.094,'alpha6': 14.0}}})
 funcs.append({"name": "LRC-wPBEh"      , "xc_functionals": {"HYB_GGA_XC_LRC_WPBEH"      : {}}})
 funcs.append({"name": "wB97X-V"        , "xc_functionals": {"HYB_GGA_XC_WB97X_V"        : {}}, "alias": ["WB97XV"]})
 #funcs.append({"name": "LCY-PBE"        , "xc_functionals": {"HYB_GGA_XC_LCY_PBE"        : {}}}) # LCY range separation not supported by psi4

@@ -6,6 +6,7 @@ list(APPEND sources
   dct_compute_UHF.cc
   dct_density_RHF.cc
   dct_density_UHF.cc
+  dct_df_operations.cc
   dct_df_tensor.cc
   dct_energy_RHF.cc
   dct_energy_UHF.cc
@@ -48,3 +49,5 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Intel")
 endif ()
 
 psi4_add_module(bin dct sources)
+
+target_link_libraries(dct PUBLIC diis)

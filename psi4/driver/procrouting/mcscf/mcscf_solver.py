@@ -3,7 +3,7 @@
 #
 # Psi4: an open-source quantum chemistry software package
 #
-# Copyright (c) 2007-2021 The Psi4 Developers.
+# Copyright (c) 2007-2022 The Psi4 Developers.
 #
 # The copyrights for code used from other parties are included in
 # the corresponding files.
@@ -170,6 +170,8 @@ def mcscf_solver(ref_wfn):
 
         current_energy = ciwfn.variable("MCSCF TOTAL ENERGY")
 
+        ciwfn.reset_ci_H0block()
+
         orb_grad_rms = mcscf_obj.gradient_rms()
         ediff = current_energy - eold
 
@@ -185,7 +187,7 @@ def mcscf_solver(ref_wfn):
         if (orb_grad_rms < mcscf_orb_grad_conv) and (abs(ediff) < abs(mcscf_e_conv)) and\
             (mcscf_iter > 3) and not qc_step:
 
-            core.print_out("\n       %s has converged!\n\n" % mtype);
+            core.print_out("\n       %s has converged!\n\n" % mtype)
             converged = True
             break
 
@@ -326,7 +328,7 @@ def mcscf_solver(ref_wfn):
 
         if (orb_grad_rms < mcscf_orb_grad_conv) and (abs(ediff) < abs(mcscf_e_conv)):
 
-            core.print_out("\n       %s has converged!\n\n" % mtype);
+            core.print_out("\n       %s has converged!\n\n" % mtype)
             converged = True
             break
 
@@ -365,9 +367,9 @@ def mcscf_solver(ref_wfn):
 
         # Retransform intragrals and update CI coeffs., OPDM, and TPDM
         ciwfn.transform_mcscf_integrals(approx_integrals_only)
-        nci_iter = ciwfn.diag_h(abs(ediff) * 1.e-2, orb_grad_rms * 1.e-3)
-
-        ciwfn.set_ci_guess("DFILE")
+        ciwfn.set_print(1)
+        ciwfn.set_ci_guess("H0_BLOCK")
+        nci_iter = ciwfn.diag_h(mcscf_e_conv, mcscf_e_conv ** 0.5)
 
         ciwfn.form_opdm()
         ciwfn.form_tpdm()
